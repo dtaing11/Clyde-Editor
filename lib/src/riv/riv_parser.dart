@@ -32,9 +32,7 @@ class RivParser {
       final object = raw.objects[index];
       switch (object.typeKey) {
         case RivTypeKeys.artboard:
-          context = _ParseContext(
-            RivArtboardModel(name: _name(object)),
-          );
+          context = _ParseContext(RivArtboardModel(name: _name(object)));
           artboards.add(context.artboard);
           // The artboard itself is object index 0 in its own object list.
           context.registerComponent(context.artboard.name);

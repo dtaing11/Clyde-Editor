@@ -125,10 +125,7 @@ void main() {
       final keyframe = firstEditableKeyframe(editor);
 
       // 100 encodes in 1 byte, 200 needs 2: forces a length change.
-      expect(
-        editor.retimeKeyframe(keyframe, 200, durationFrames: 500),
-        isTrue,
-      );
+      expect(editor.retimeKeyframe(keyframe, 200, durationFrames: 500), isTrue);
       final reloaded = RivDocumentEditor.parse(editor.bytes());
       expect(findByRawIndex(reloaded, keyframe.rawObjectIndex)!.frame, 200);
     });

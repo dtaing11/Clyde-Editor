@@ -25,6 +25,10 @@ class EditorState extends ChangeNotifier {
   bool _isPlaying = false;
   double _currentTime = 0;
   RivKeyedObjectModel? _selectedKeyedObject;
+  final List<Uint8List> _undoStack = [];
+
+  /// Maximum number of undo snapshots retained.
+  static const int maxUndoDepth = 50;
 
   EditorDocument? get document => _document;
   rive.Artboard? get activeArtboard => _activeArtboard;
@@ -61,6 +65,82 @@ class EditorState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether the current document supports byte-level editing.
+  bool get canEdit => _document?.editor != null;
+
+  /// Whether an undo snapshot is available.
+  bool get canUndo => _undoStack.isNotEmpty;
+
+  /// Moves [keyframe] to [newFrame] and reloads the engine so playback
+  /// reflects the change. Returns `true` on success.
+  Future<bool> retimeKeyframe(RivKeyFrameModel keyframe, int newFrame) async {
+    final doc = _document;
+    final editor = doc?.editor;
+    final animation = selectedAnimationModel;
+    if (doc == null || editor == null || animation == null) return false;
+
+    final before = editor.bytes();
+    final changed = editor.retimeKeyframe(
+      keyframe,
+      newFrame,
+      durationFrames: animation.durationFrames,
+    );
+    if (!changed) return false;
+
+    _pushUndo(before);
+    return _reloadEngine(doc.name, editor.bytes());
+  }
+
+  /// Reverts the most recent edit.
+  Future<bool> undo() async {
+    final doc = _document;
+    if (doc == null || _undoStack.isEmpty) return false;
+    final bytes = _undoStack.removeLast();
+    return _reloadEngine(doc.name, bytes);
+  }
+
+  void _pushUndo(Uint8List bytes) {
+    _undoStack.add(bytes);
+    if (_undoStack.length > maxUndoDepth) _undoStack.removeAt(0);
+  }
+
+  /// Re-decodes [bytes] in the engine, preserving artboard/animation
+  /// selection, playhead time and the inspected object where possible.
+  Future<bool> _reloadEngine(String name, Uint8List bytes) async {
+    final previousArtboardName = _activeArtboard?.name;
+    final previousAnimationIndex = _selectedAnimationIndex;
+    final previousKeyedObjectId = _selectedKeyedObject?.objectId;
+    final previousTime = _currentTime;
+    final wasPlaying = _isPlaying;
+
+    final doc = await EditorDocument.decode(name, bytes);
+    if (doc == null) return false;
+
+    _document?.dispose();
+    _document = doc;
+
+    final artboard =
+        doc.artboards
+            .where((a) => a.name == previousArtboardName)
+            .firstOrNull ??
+        doc.artboards.first;
+    selectArtboard(artboard);
+
+    if (previousAnimationIndex >= 0 &&
+        previousAnimationIndex < _animations.length) {
+      selectAnimation(previousAnimationIndex);
+    }
+    if (previousKeyedObjectId != null) {
+      _selectedKeyedObject = selectedAnimationModel?.keyedObjects
+          .where((o) => o.objectId == previousKeyedObjectId)
+          .firstOrNull;
+    }
+    seek(previousTime);
+    if (wasPlaying) togglePlay();
+    notifyListeners();
+    return true;
+  }
+
   /// Loads a document from a Flutter asset bundle path.
   Future<bool> loadFromAsset(String assetPath) async {
     final data = await rootBundle.load(assetPath);
@@ -79,6 +159,7 @@ class EditorState extends ChangeNotifier {
 
     _document?.dispose();
     _document = doc;
+    _undoStack.clear();
     selectArtboard(doc.artboards.first);
     return true;
   }

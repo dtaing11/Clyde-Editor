@@ -24,7 +24,9 @@ class RivRawDocument {
     required this.majorVersion,
     required this.minorVersion,
     required bool hasTrailingTerminator,
+    // ignore: prefer_initializing_formals
   }) : _headerBytes = headerBytes,
+       // ignore: prefer_initializing_formals
        _hasTrailingTerminator = hasTrailingTerminator;
 
   /// The RIVE header including version, file id and property ToC,

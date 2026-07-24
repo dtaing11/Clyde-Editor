@@ -73,6 +73,10 @@ class TimelinePanel extends StatelessWidget {
                           labelWidth: labelGutterWidth,
                           selectedKeyedObject: state.selectedKeyedObject,
                           onSelectKeyedObject: state.selectKeyedObject,
+                          onRetimeKeyframe: state.canEdit
+                              ? (keyframe, newFrame) =>
+                                    state.retimeKeyframe(keyframe, newFrame)
+                              : null,
                         ),
                 ),
               ],
@@ -114,6 +118,14 @@ class _TransportBar extends StatelessWidget {
             tooltip: 'Go to end',
             icon: const Icon(Icons.skip_next),
             onPressed: () => state.seek(state.duration),
+          ),
+          const SizedBox(width: 12),
+          IconButton(
+            iconSize: 18,
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Undo edit',
+            icon: const Icon(Icons.undo),
+            onPressed: state.canUndo ? state.undo : null,
           ),
         ],
       ),

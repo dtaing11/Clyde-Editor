@@ -7,6 +7,8 @@ import '../../../riv/riv_document_model.dart';
 ///
 /// Each keyed object renders a header row followed by one row per
 /// animated property, with diamonds marking keyframe positions.
+/// Diamonds can be dragged horizontally to retime keyframes when
+/// [onRetimeKeyframe] is provided.
 class KeyframeTrackList extends StatelessWidget {
   const KeyframeTrackList({
     super.key,
@@ -14,6 +16,7 @@ class KeyframeTrackList extends StatelessWidget {
     required this.labelWidth,
     this.selectedKeyedObject,
     this.onSelectKeyedObject,
+    this.onRetimeKeyframe,
   });
 
   final RivAnimationModel animation;
@@ -23,6 +26,11 @@ class KeyframeTrackList extends StatelessWidget {
 
   /// Invoked when a keyed-object header row is tapped.
   final ValueChanged<RivKeyedObjectModel>? onSelectKeyedObject;
+
+  /// Invoked when a keyframe diamond is dropped at a new frame.
+  /// When `null` the tracks are read-only.
+  final void Function(RivKeyFrameModel keyframe, int newFrame)?
+  onRetimeKeyframe;
 
   /// Width reserved on the left for track names, so keyframe positions
   /// align with the shared time ruler above.
@@ -51,6 +59,7 @@ class KeyframeTrackList extends StatelessWidget {
               property: property,
               animation: animation,
               labelWidth: labelWidth,
+              onRetimeKeyframe: onRetimeKeyframe,
             ),
         ],
       ],
@@ -107,11 +116,14 @@ class _PropertyTrackRow extends StatelessWidget {
     required this.property,
     required this.animation,
     required this.labelWidth,
+    required this.onRetimeKeyframe,
   });
 
   final RivKeyedPropertyModel property;
   final RivAnimationModel animation;
   final double labelWidth;
+  final void Function(RivKeyFrameModel keyframe, int newFrame)?
+  onRetimeKeyframe;
 
   @override
   Widget build(BuildContext context) {
@@ -134,12 +146,10 @@ class _PropertyTrackRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: CustomPaint(
-              size: const Size.fromHeight(20),
-              painter: _KeyframeRowPainter(
-                property: property,
-                durationFrames: animation.durationFrames,
-              ),
+            child: _KeyframeTrackArea(
+              property: property,
+              durationFrames: animation.durationFrames,
+              onRetimeKeyframe: onRetimeKeyframe,
             ),
           ),
         ],
@@ -148,14 +158,147 @@ class _PropertyTrackRow extends StatelessWidget {
   }
 }
 
-/// Paints keyframe diamonds along a track row.
-class _KeyframeRowPainter extends CustomPainter {
-  _KeyframeRowPainter({required this.property, required this.durationFrames});
+/// Interactive keyframe strip: renders diamonds and handles dragging
+/// them to new frames with a ghost preview.
+class _KeyframeTrackArea extends StatefulWidget {
+  const _KeyframeTrackArea({
+    required this.property,
+    required this.durationFrames,
+    required this.onRetimeKeyframe,
+  });
 
   final RivKeyedPropertyModel property;
   final int durationFrames;
+  final void Function(RivKeyFrameModel keyframe, int newFrame)?
+  onRetimeKeyframe;
+
+  @override
+  State<_KeyframeTrackArea> createState() => _KeyframeTrackAreaState();
+}
+
+class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
+  static const double _hitRadius = 6;
+
+  RivKeyFrameModel? _dragging;
+  int? _ghostFrame;
+
+  int _frameAt(double dx, double width) {
+    if (widget.durationFrames <= 0 || width <= 0) return 0;
+    return ((dx / width) * widget.durationFrames).round().clamp(
+      0,
+      widget.durationFrames,
+    );
+  }
+
+  RivKeyFrameModel? _hitTest(double dx, double width) {
+    if (widget.durationFrames <= 0) return null;
+    RivKeyFrameModel? closest;
+    var closestDistance = double.infinity;
+    for (final keyframe in widget.property.keyframes) {
+      if (keyframe.rawObjectIndex < 0) continue;
+      final x = (keyframe.frame / widget.durationFrames) * width;
+      final distance = (x - dx).abs();
+      if (distance < _hitRadius && distance < closestDistance) {
+        closest = keyframe;
+        closestDistance = distance;
+      }
+    }
+    return closest;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editable = widget.onRetimeKeyframe != null;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: editable
+              ? (details) {
+                  final hit = _hitTest(details.localPosition.dx, width);
+                  if (hit == null) return;
+                  setState(() {
+                    _dragging = hit;
+                    _ghostFrame = hit.frame;
+                  });
+                }
+              : null,
+          onHorizontalDragUpdate: editable
+              ? (details) {
+                  if (_dragging == null) return;
+                  setState(() {
+                    _ghostFrame = _frameAt(details.localPosition.dx, width);
+                  });
+                }
+              : null,
+          onHorizontalDragEnd: editable
+              ? (details) {
+                  final dragging = _dragging;
+                  final ghostFrame = _ghostFrame;
+                  if (dragging != null &&
+                      ghostFrame != null &&
+                      ghostFrame != dragging.frame) {
+                    widget.onRetimeKeyframe!(dragging, ghostFrame);
+                  }
+                  setState(() {
+                    _dragging = null;
+                    _ghostFrame = null;
+                  });
+                }
+              : null,
+          onHorizontalDragCancel: editable
+              ? () => setState(() {
+                  _dragging = null;
+                  _ghostFrame = null;
+                })
+              : null,
+          child: MouseRegion(
+            cursor: editable
+                ? SystemMouseCursors.click
+                : SystemMouseCursors.basic,
+            child: CustomPaint(
+              size: const Size.fromHeight(20),
+              painter: _KeyframeRowPainter(
+                property: widget.property,
+                durationFrames: widget.durationFrames,
+                draggingKeyframe: _dragging,
+                ghostFrame: _ghostFrame,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Paints keyframe diamonds along a track row, plus an optional ghost
+/// diamond while one is being dragged.
+class _KeyframeRowPainter extends CustomPainter {
+  _KeyframeRowPainter({
+    required this.property,
+    required this.durationFrames,
+    this.draggingKeyframe,
+    this.ghostFrame,
+  });
+
+  final RivKeyedPropertyModel property;
+  final int durationFrames;
+  final RivKeyFrameModel? draggingKeyframe;
+  final int? ghostFrame;
 
   static const double _diamondRadius = 3.5;
+
+  void _drawDiamond(Canvas canvas, double x, double y, Paint paint) {
+    final path = Path()
+      ..moveTo(x, y - _diamondRadius)
+      ..lineTo(x + _diamondRadius, y)
+      ..lineTo(x, y + _diamondRadius)
+      ..lineTo(x - _diamondRadius, y)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -169,22 +312,29 @@ class _KeyframeRowPainter extends CustomPainter {
     );
 
     if (durationFrames <= 0) return;
+    final y = size.height / 2;
     final diamondPaint = Paint()..color = EditorTheme.accent;
+    final dimmedPaint = Paint()
+      ..color = EditorTheme.accent.withValues(alpha: 0.35);
+
     for (final keyframe in property.keyframes) {
       final x = (keyframe.frame / durationFrames) * size.width;
-      final y = size.height / 2;
-      final path = Path()
-        ..moveTo(x, y - _diamondRadius)
-        ..lineTo(x + _diamondRadius, y)
-        ..lineTo(x, y + _diamondRadius)
-        ..lineTo(x - _diamondRadius, y)
-        ..close();
-      canvas.drawPath(path, diamondPaint);
+      final isDragged = identical(keyframe, draggingKeyframe);
+      _drawDiamond(canvas, x, y, isDragged ? dimmedPaint : diamondPaint);
+    }
+
+    // Ghost diamond at the drop position.
+    final ghost = ghostFrame;
+    if (ghost != null) {
+      final x = (ghost / durationFrames) * size.width;
+      _drawDiamond(canvas, x, y, Paint()..color = EditorTheme.playhead);
     }
   }
 
   @override
   bool shouldRepaint(_KeyframeRowPainter oldDelegate) =>
       oldDelegate.property != property ||
-      oldDelegate.durationFrames != durationFrames;
+      oldDelegate.durationFrames != durationFrames ||
+      oldDelegate.draggingKeyframe != draggingKeyframe ||
+      oldDelegate.ghostFrame != ghostFrame;
 }
