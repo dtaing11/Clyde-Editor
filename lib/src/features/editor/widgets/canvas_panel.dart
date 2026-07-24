@@ -1,3 +1,6 @@
+import 'dart:ui' show PointMode;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:rive_native/rive_native.dart' as rive;
@@ -12,8 +15,9 @@ import '../state/editor_state.dart';
 /// content (Rive render), overlay (tool drawings, grid), and
 /// interaction (pointer routing to the active tool).
 ///
-/// The [ViewTransform] is the single source of truth consumed by all
-/// three layers.
+/// The [ViewTransform] lives in a [ValueNotifier] consumed by the
+/// layers in their *paint* phase: pan/zoom never rebuilds the widget
+/// tree, keeping the hot path at one repaint per changed layer.
 class CanvasPanel extends StatefulWidget {
   const CanvasPanel({
     super.key,
@@ -29,11 +33,13 @@ class CanvasPanel extends StatefulWidget {
 }
 
 class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
-  ViewTransform _transform = const ViewTransform();
+  final ValueNotifier<ViewTransform> _transform = ValueNotifier(
+    const ViewTransform(),
+  );
 
   /// Bumped to invalidate only the overlay layer (§2.3 acceptance:
   /// overlay never repaints because content changed, and vice versa).
-  int _overlayEpoch = 0;
+  final ValueNotifier<int> _overlayEpoch = ValueNotifier(0);
 
   @override
   void initState() {
@@ -44,29 +50,31 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
   @override
   void dispose() {
     widget.toolController.attachContext(null);
+    _transform.dispose();
+    _overlayEpoch.dispose();
     super.dispose();
   }
 
   // -- ToolContext ---------------------------------------------------------
 
   @override
-  ViewTransform get viewTransform => _transform;
+  ViewTransform get viewTransform => _transform.value;
 
   @override
   void setViewTransform(ViewTransform transform) {
-    setState(() => _transform = transform);
+    _transform.value = transform;
   }
 
   @override
   void requestOverlayRepaint() {
-    setState(() => _overlayEpoch++);
+    _overlayEpoch.value++;
   }
 
   // -- Interaction ---------------------------------------------------------
 
   ToolPointerEvent _toolEvent(PointerEvent event) => ToolPointerEvent(
     viewPosition: event.localPosition,
-    scenePosition: _transform.viewToScene(event.localPosition),
+    scenePosition: _transform.value.viewToScene(event.localPosition),
     isSecondary: event.buttons == 2,
   );
 
@@ -74,8 +82,8 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
     final size = context.size;
     if (size == null) return;
     setViewTransform(
-      _transform.zoomedBy(
-        scale / _transform.scale,
+      _transform.value.zoomedBy(
+        scale / _transform.value.scale,
         viewAnchor: Offset(size.width / 2, size.height / 2),
       ),
     );
@@ -100,19 +108,54 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
               if (event is PointerScrollEvent) {
                 final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
                 setViewTransform(
-                  _transform.zoomedBy(factor, viewAnchor: event.localPosition),
+                  _transform.value.zoomedBy(
+                    factor,
+                    viewAnchor: event.localPosition,
+                  ),
                 );
               }
             },
             child: MouseRegion(
               cursor: tool?.cursor ?? MouseCursor.defer,
-              child: _CanvasLayers(
-                transform: _transform,
-                overlayEpoch: _overlayEpoch,
-                toolContext: this,
-                tool: tool,
-                artboard: artboard,
-                painter: widget.state.painter,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _GridPainter(transform: _transform),
+                    ),
+                  ),
+                  if (artboard != null)
+                    RepaintBoundary(
+                      child: ClipRect(
+                        child: _TransformedContent(
+                          transform: _transform,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(48),
+                              child: rive.RiveArtboardWidget(
+                                artboard: artboard,
+                                painter: widget.state.painter,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const _EmptyCanvas(),
+                  RepaintBoundary(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _ToolOverlayPainter(
+                          epoch: _overlayEpoch,
+                          tool: tool,
+                          toolContext: this,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -120,10 +163,13 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
         Positioned(
           right: 10,
           bottom: 10,
-          child: _ZoomControls(
-            scale: _transform.scale,
-            onZoomTo: _zoomTo,
-            onReset: _resetView,
+          child: ValueListenableBuilder(
+            valueListenable: _transform,
+            builder: (context, transform, _) => _ZoomControls(
+              scale: transform.scale,
+              onZoomTo: _zoomTo,
+              onReset: _resetView,
+            ),
           ),
         ),
       ],
@@ -131,70 +177,30 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
   }
 }
 
-/// Stacks the grid, content, and overlay paint layers.
-class _CanvasLayers extends StatelessWidget {
-  const _CanvasLayers({
-    required this.transform,
-    required this.overlayEpoch,
-    required this.toolContext,
-    required this.tool,
-    required this.artboard,
-    required this.painter,
-  });
+/// Applies the view transform to [child] without rebuilding it.
+///
+/// [AnimatedBuilder] passes the pre-built child through, so pan/zoom
+/// only updates the transform layer; the Rive subtree is untouched.
+class _TransformedContent extends StatelessWidget {
+  const _TransformedContent({required this.transform, required this.child});
 
-  final ViewTransform transform;
-  final int overlayEpoch;
-  final ToolContext toolContext;
-  final EditorTool? tool;
-  final rive.Artboard? artboard;
-  final rive.ArtboardPainter painter;
+  final ValueListenable<ViewTransform> transform;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        RepaintBoundary(
-          child: CustomPaint(painter: _GridPainter(transform: transform)),
-        ),
-        if (artboard != null)
-          RepaintBoundary(
-            child: ClipRect(
-              child: Transform(
-                transform: Matrix4.identity()
-                  ..translateByDouble(
-                    transform.offset.dx,
-                    transform.offset.dy,
-                    0,
-                    1,
-                  )
-                  ..scaleByDouble(transform.scale, transform.scale, 1, 1),
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(48),
-                    child: rive.RiveArtboardWidget(
-                      artboard: artboard!,
-                      painter: painter,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          )
-        else
-          const _EmptyCanvas(),
-        RepaintBoundary(
-          child: IgnorePointer(
-            child: CustomPaint(
-              painter: _ToolOverlayPainter(
-                epoch: overlayEpoch,
-                tool: tool,
-                toolContext: toolContext,
-              ),
-            ),
-          ),
-        ),
-      ],
+    return AnimatedBuilder(
+      animation: transform,
+      child: child,
+      builder: (context, prebuiltChild) {
+        final value = transform.value;
+        return Transform(
+          transform: Matrix4.identity()
+            ..translateByDouble(value.offset.dx, value.offset.dy, 0, 1)
+            ..scaleByDouble(value.scale, value.scale, 1, 1),
+          child: prebuiltChild,
+        );
+      },
     );
   }
 }
@@ -221,14 +227,17 @@ class _EmptyCanvas extends StatelessWidget {
 }
 
 /// Delegates overlay painting to the active tool (§2.3 layer 2).
+///
+/// Repaints when the overlay epoch changes; widget rebuilds are not
+/// involved.
 class _ToolOverlayPainter extends CustomPainter {
   _ToolOverlayPainter({
     required this.epoch,
     required this.tool,
     required this.toolContext,
-  });
+  }) : super(repaint: epoch);
 
-  final int epoch;
+  final ValueListenable<int> epoch;
   final EditorTool? tool;
   final ToolContext toolContext;
 
@@ -239,7 +248,7 @@ class _ToolOverlayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ToolOverlayPainter oldDelegate) =>
-      oldDelegate.epoch != epoch || oldDelegate.tool != tool;
+      oldDelegate.tool != tool;
 }
 
 /// Zoom percentage readout plus zoom buttons.
@@ -328,12 +337,18 @@ class _ZoomButton extends StatelessWidget {
 }
 
 /// Dotted background grid that follows the view transform.
+///
+/// All dots are emitted in a single [Canvas.drawRawPoints] call; cost
+/// is one canvas op regardless of dot count. Repaints via the
+/// transform listenable, never through widget rebuilds.
 class _GridPainter extends CustomPainter {
-  _GridPainter({required this.transform});
+  _GridPainter({required this.transform}) : super(repaint: transform);
 
-  final ViewTransform transform;
+  final ValueListenable<ViewTransform> transform;
 
   static const double _baseSpacing = 24;
+  static const double _minSpacing = 12;
+  static const double _maxSpacing = 48;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -342,26 +357,40 @@ class _GridPainter extends CustomPainter {
       Paint()..color = EditorTheme.viewportBackground,
     );
 
-    var spacing = _baseSpacing * transform.scale;
-    while (spacing < 12) {
+    final value = transform.value;
+    var spacing = _baseSpacing * value.scale;
+    while (spacing < _minSpacing) {
       spacing *= 2;
     }
-    while (spacing > 48) {
+    while (spacing > _maxSpacing) {
       spacing /= 2;
     }
 
-    final dotPaint = Paint()
-      ..color = EditorTheme.border.withValues(alpha: 0.55);
-    final startX = transform.offset.dx % spacing;
-    final startY = transform.offset.dy % spacing;
-    for (var x = startX; x < size.width; x += spacing) {
-      for (var y = startY; y < size.height; y += spacing) {
-        canvas.drawCircle(Offset(x, y), 1, dotPaint);
+    final startX = value.offset.dx % spacing;
+    final startY = value.offset.dy % spacing;
+    final columns = ((size.width - startX) / spacing).ceil() + 1;
+    final rows = ((size.height - startY) / spacing).ceil() + 1;
+    if (columns <= 0 || rows <= 0) return;
+
+    final points = Float32List(columns * rows * 2);
+    var i = 0;
+    for (var column = 0; column < columns; column++) {
+      final x = startX + column * spacing;
+      for (var row = 0; row < rows; row++) {
+        points[i++] = x;
+        points[i++] = startY + row * spacing;
       }
     }
+    canvas.drawRawPoints(
+      PointMode.points,
+      points,
+      Paint()
+        ..color = EditorTheme.border.withValues(alpha: 0.55)
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round,
+    );
   }
 
   @override
-  bool shouldRepaint(_GridPainter oldDelegate) =>
-      oldDelegate.transform != transform;
+  bool shouldRepaint(_GridPainter oldDelegate) => false;
 }
