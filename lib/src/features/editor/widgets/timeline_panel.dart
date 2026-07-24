@@ -71,6 +71,8 @@ class TimelinePanel extends StatelessWidget {
                       : KeyframeTrackList(
                           animation: model,
                           labelWidth: labelGutterWidth,
+                          selectedKeyedObject: state.selectedKeyedObject,
+                          onSelectKeyedObject: state.selectKeyedObject,
                         ),
                 ),
               ],

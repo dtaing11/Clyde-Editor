@@ -24,6 +24,7 @@ class EditorState extends ChangeNotifier {
   int _selectedAnimationIndex = -1;
   bool _isPlaying = false;
   double _currentTime = 0;
+  RivKeyedObjectModel? _selectedKeyedObject;
 
   EditorDocument? get document => _document;
   rive.Artboard? get activeArtboard => _activeArtboard;
@@ -46,6 +47,18 @@ class EditorState extends ChangeNotifier {
     final animation = selectedAnimation;
     if (artboard == null || animation == null) return null;
     return _document?.animationModel(artboard.name, animation.name);
+  }
+
+  /// The keyed object currently inspected, or `null` for none.
+  ///
+  /// Cleared automatically when the animation or artboard changes.
+  RivKeyedObjectModel? get selectedKeyedObject => _selectedKeyedObject;
+
+  /// Selects [keyedObject] for the inspector; pass `null` to clear.
+  void selectKeyedObject(RivKeyedObjectModel? keyedObject) {
+    if (identical(_selectedKeyedObject, keyedObject)) return;
+    _selectedKeyedObject = keyedObject;
+    notifyListeners();
   }
 
   /// Loads a document from a Flutter asset bundle path.
@@ -77,6 +90,7 @@ class EditorState extends ChangeNotifier {
     _selectedAnimationIndex = _animations.isEmpty ? -1 : 0;
     _isPlaying = false;
     _currentTime = 0;
+    _selectedKeyedObject = null;
     painter.artboardChanged(artboard);
     painter.setAnimation(selectedAnimation);
     notifyListeners();
@@ -88,6 +102,7 @@ class EditorState extends ChangeNotifier {
     _selectedAnimationIndex = index;
     _isPlaying = false;
     _currentTime = 0;
+    _selectedKeyedObject = null;
     painter.setAnimation(selectedAnimation);
     notifyListeners();
   }
