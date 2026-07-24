@@ -1,4 +1,8 @@
-# Rive Animation Editor
+<p align="center">
+  <img src="assets/branding/clyde_logo.png" width="96" alt="Clyde Editor logo">
+</p>
+
+# Clyde Editor
 
 An open-source animation editor built on the [Rive](https://rive.app) open-source
 engine ([rive-runtime](https://github.com/rive-app/rive-runtime)) and Flutter.
@@ -9,19 +13,21 @@ editing UI (hierarchy, viewport, timeline) on top.
 
 ## Status
 
-Early MVP. Currently supported:
+Early but functional. Currently supported:
 
-- Open `.riv` files (a demo file is bundled)
+- Open `.riv` files (a demo file is bundled) and save edited copies
 - Browse artboards and their animations in the hierarchy panel
-- Render the active artboard with the Rive Renderer
-- Timeline with play/pause, looping, and scrubbing
+- Render the active artboard with the GPU Rive Renderer
+- Timeline with play/pause, looping, scrubbing, and frame/second display
+- Keyframe tracks with drag-to-retime editing and undo
+- Inspector showing animated property values at the playhead
 
 Planned:
 
-- Keyframe tracks and keyframe editing in the timeline
-- Object inspector (transform, fill, stroke properties)
+- Keyframe value editing and cubic curve editing
+- Object inspector editing (transform, fill, stroke properties)
 - Shape/pen tools for authoring vector content
-- Saving/exporting `.riv` files
+- Creating new animations and artboards from scratch
 
 ## Architecture
 

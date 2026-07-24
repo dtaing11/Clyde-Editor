@@ -3,10 +3,11 @@ import 'dart:typed_data';
 import 'package:rive_native/rive_native.dart' as rive;
 
 import '../../../engine/rive_engine.dart';
+import '../../../riv/riv_document_editor.dart';
 import '../../../riv/riv_document_model.dart';
-import '../../../riv/riv_parser.dart';
 
-/// An immutable handle to a loaded `.riv` document and its artboard contents.
+/// A loaded `.riv` document: engine-side resources plus the editable
+/// byte-level representation.
 ///
 /// Owns the underlying native resources. Call [dispose] when the document
 /// is closed or replaced.
@@ -15,7 +16,7 @@ class EditorDocument {
     required this.name,
     required this.file,
     required this.artboards,
-    required this.model,
+    required this.editor,
   });
 
   /// Display name (usually the file name without extension).
@@ -27,10 +28,12 @@ class EditorDocument {
   /// All artboards contained in [file].
   final List<rive.Artboard> artboards;
 
-  /// Editor-side parse of the same bytes: keyed objects, properties and
-  /// keyframes for the timeline. `null` when parsing failed (the engine
-  /// may still render files our parser does not fully understand yet).
-  final RivDocumentModel? model;
+  /// Editable byte-level document, `null` when our parser could not read
+  /// the file (the engine may still render formats we don't parse yet).
+  final RivDocumentEditor? editor;
+
+  /// Editor-side display model (keyed objects, tracks, keyframes).
+  RivDocumentModel? get model => editor?.model;
 
   /// Decodes [bytes] into a document, or returns `null` on failure.
   static Future<EditorDocument?> decode(String name, Uint8List bytes) async {
@@ -48,18 +51,18 @@ class EditorDocument {
       return null;
     }
 
-    RivDocumentModel? model;
+    RivDocumentEditor? editor;
     try {
-      model = RivParser.parse(bytes);
+      editor = RivDocumentEditor.parse(bytes);
     } on Exception {
-      // Non-fatal: timeline tracks are simply unavailable.
-      model = null;
+      // Non-fatal: timeline tracks and editing are simply unavailable.
+      editor = null;
     }
     return EditorDocument._(
       name: name,
       file: file,
       artboards: artboards,
-      model: model,
+      editor: editor,
     );
   }
 

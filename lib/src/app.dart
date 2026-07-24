@@ -10,7 +10,7 @@ class RiveEditorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Rive Animation Editor',
+      title: 'Clyde Editor',
       debugShowCheckedModeBanner: false,
       theme: EditorTheme.dark(),
       home: const EditorScreen(),
