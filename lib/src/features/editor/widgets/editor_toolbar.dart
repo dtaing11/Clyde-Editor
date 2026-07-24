@@ -35,10 +35,18 @@ class EditorToolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.animation, color: EditorTheme.accent, size: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Image.asset(
+              'assets/branding/clyde_logo.png',
+              width: 22,
+              height: 22,
+              filterQuality: FilterQuality.medium,
+            ),
+          ),
           const SizedBox(width: 8),
           const Text(
-            'Rive Editor',
+            'Clyde Editor',
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           ),
           const SizedBox(width: 16),

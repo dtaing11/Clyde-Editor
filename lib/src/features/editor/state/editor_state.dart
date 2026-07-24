@@ -6,6 +6,15 @@ import '../../../riv/riv_document_model.dart';
 import '../painting/timeline_animation_painter.dart';
 import 'editor_document.dart';
 
+/// How times are displayed across the editor UI.
+enum TimeDisplayMode {
+  /// Frame numbers (e.g. `15f`), the animator-friendly unit.
+  frames,
+
+  /// Seconds with fractions (e.g. `0.25s`).
+  seconds,
+}
+
 /// Central mutable state of the editor, exposed as a [ChangeNotifier].
 ///
 /// Widgets listen to this controller instead of talking to the engine
@@ -70,6 +79,31 @@ class EditorState extends ChangeNotifier {
 
   /// Whether an undo snapshot is available.
   bool get canUndo => _undoStack.isNotEmpty;
+
+  TimeDisplayMode _timeDisplayMode = TimeDisplayMode.frames;
+
+  /// Current unit used to display times in the timeline and inspector.
+  TimeDisplayMode get timeDisplayMode => _timeDisplayMode;
+
+  /// Frames per second of the selected animation (falls back to 60).
+  int get fps => selectedAnimationModel?.fps ?? 60;
+
+  /// Switches between frame and second display.
+  void setTimeDisplayMode(TimeDisplayMode mode) {
+    if (_timeDisplayMode == mode) return;
+    _timeDisplayMode = mode;
+    notifyListeners();
+  }
+
+  /// Formats [seconds] according to [timeDisplayMode].
+  String formatTime(double seconds) {
+    switch (_timeDisplayMode) {
+      case TimeDisplayMode.frames:
+        return '${(seconds * fps).round()}f';
+      case TimeDisplayMode.seconds:
+        return '${seconds.toStringAsFixed(2)}s';
+    }
+  }
 
   /// Moves [keyframe] to [newFrame] and reloads the engine so playback
   /// reflects the change. Returns `true` on success.

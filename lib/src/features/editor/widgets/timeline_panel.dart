@@ -23,15 +23,18 @@ class TimelinePanel extends StatelessWidget {
     return EditorPanel(
       title: 'Timeline',
       actions: [
-        if (animation != null)
+        if (animation != null) ...[
+          _TimeUnitToggle(state: state),
+          const SizedBox(width: 10),
           Text(
-            '${state.currentTime.toStringAsFixed(2)}s / '
-            '${state.duration.toStringAsFixed(2)}s',
+            '${state.formatTime(state.currentTime)} / '
+            '${state.formatTime(state.duration)}',
             style: const TextStyle(
               fontSize: 11,
               color: EditorTheme.textSecondary,
             ),
           ),
+        ],
       ],
       child: animation == null
           ? const Center(
@@ -81,6 +84,78 @@ class TimelinePanel extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+}
+
+/// Segmented toggle switching time display between frames and seconds.
+class _TimeUnitToggle extends StatelessWidget {
+  const _TimeUnitToggle({required this.state});
+
+  final EditorState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: EditorTheme.border),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _TimeUnitButton(
+            label: 'f',
+            tooltip: 'Show frames',
+            selected: state.timeDisplayMode == TimeDisplayMode.frames,
+            onTap: () => state.setTimeDisplayMode(TimeDisplayMode.frames),
+          ),
+          _TimeUnitButton(
+            label: 's',
+            tooltip: 'Show seconds',
+            selected: state.timeDisplayMode == TimeDisplayMode.seconds,
+            onTap: () => state.setTimeDisplayMode(TimeDisplayMode.seconds),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimeUnitButton extends StatelessWidget {
+  const _TimeUnitButton({
+    required this.label,
+    required this.tooltip,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String tooltip;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          color: selected
+              ? EditorTheme.accent.withValues(alpha: 0.25)
+              : Colors.transparent,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: selected ? EditorTheme.accent : EditorTheme.textSecondary,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -158,6 +233,8 @@ class _ScrubberRuler extends StatelessWidget {
         painter: _TimelineRulerPainter(
           duration: state.duration,
           currentTime: state.currentTime,
+          fps: state.fps,
+          displayMode: state.timeDisplayMode,
         ),
       ),
     );
@@ -165,10 +242,27 @@ class _ScrubberRuler extends StatelessWidget {
 }
 
 class _TimelineRulerPainter extends CustomPainter {
-  _TimelineRulerPainter({required this.duration, required this.currentTime});
+  _TimelineRulerPainter({
+    required this.duration,
+    required this.currentTime,
+    required this.fps,
+    required this.displayMode,
+  });
 
   final double duration;
   final double currentTime;
+  final int fps;
+  final TimeDisplayMode displayMode;
+
+  /// Picks a label step so labels stay readable at any zoom: the
+  /// smallest "nice" step at least [minStep].
+  static double _niceStep(double minStep) {
+    const steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000];
+    for (final step in steps) {
+      if (step >= minStep) return step.toDouble();
+    }
+    return 1000;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -177,9 +271,8 @@ class _TimelineRulerPainter extends CustomPainter {
       Paint()..color = EditorTheme.timelineTrack,
     );
 
-    if (duration <= 0) return;
+    if (duration <= 0 || fps <= 0) return;
 
-    // Tick marks every 0.1s, labels every 0.5s.
     final tickPaint = Paint()
       ..color = EditorTheme.border
       ..strokeWidth = 1;
@@ -187,18 +280,26 @@ class _TimelineRulerPainter extends CustomPainter {
       color: EditorTheme.textSecondary.withValues(alpha: 0.8),
       fontSize: 9,
     );
-    const minorStep = 0.1;
-    for (var t = 0.0; t <= duration + 1e-6; t += minorStep) {
-      final x = (t / duration) * size.width;
-      final isMajor = (t / 0.5) % 1 < 1e-6 || (0.5 - (t % 0.5)).abs() < 1e-6;
+
+    final totalFrames = duration * fps;
+    // Aim for a label roughly every 60px and a tick every 8px.
+    final labelStepFrames = _niceStep(totalFrames * 60 / size.width);
+    final tickStepFrames = _niceStep(totalFrames * 8 / size.width);
+
+    for (var f = 0.0; f <= totalFrames + 1e-6; f += tickStepFrames) {
+      final x = (f / totalFrames) * size.width;
+      final isMajor = f % labelStepFrames < 1e-6;
       canvas.drawLine(
         Offset(x, isMajor ? 6 : 14),
         Offset(x, size.height),
         tickPaint,
       );
       if (isMajor) {
+        final label = displayMode == TimeDisplayMode.frames
+            ? '${f.round()}f'
+            : '${(f / fps).toStringAsFixed(2)}s';
         final tp = TextPainter(
-          text: TextSpan(text: '${t.toStringAsFixed(1)}s', style: textStyle),
+          text: TextSpan(text: label, style: textStyle),
           textDirection: TextDirection.ltr,
         )..layout();
         tp.paint(canvas, Offset(x + 3, 2));
@@ -225,5 +326,7 @@ class _TimelineRulerPainter extends CustomPainter {
   @override
   bool shouldRepaint(_TimelineRulerPainter oldDelegate) =>
       oldDelegate.currentTime != currentTime ||
-      oldDelegate.duration != duration;
+      oldDelegate.duration != duration ||
+      oldDelegate.fps != fps ||
+      oldDelegate.displayMode != displayMode;
 }
