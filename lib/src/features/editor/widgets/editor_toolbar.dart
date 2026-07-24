@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -16,7 +14,7 @@ class EditorToolbar extends StatelessWidget {
     const typeGroup = XTypeGroup(label: 'Rive files', extensions: ['riv']);
     final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file == null) return;
-    final bytes = await File(file.path).readAsBytes();
+    final bytes = await file.readAsBytes();
     final name = file.name.replaceAll('.riv', '');
     final ok = await state.loadFromBytes(name, bytes);
     if (!ok && context.mounted) {
