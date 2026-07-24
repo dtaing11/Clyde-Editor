@@ -52,15 +52,16 @@ Design rules:
 
 ## Getting started
 
-Requirements: Flutter 3.32+ with macOS desktop support enabled.
+Requirements: Flutter 3.32+ with desktop support enabled.
 
 ```sh
 flutter pub get
-flutter run -d macos
+flutter run -d macos    # or: -d windows / -d linux
 ```
 
-Other desktop platforms (Windows, Linux) should work with
-`flutter create --platforms=windows,linux .` but are untested so far.
+All three desktop platforms (macOS, Windows, Linux) are scaffolded and
+built in CI. Linux needs the usual Flutter desktop packages:
+`ninja-build libgtk-3-dev clang cmake pkg-config`.
 
 ## Contributing
 
