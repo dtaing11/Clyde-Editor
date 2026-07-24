@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../riv/riv_artboard_editor.dart';
 import '../../../riv/riv_document_builder.dart';
 import '../../../riv/riv_document_model.dart';
 import '../../../riv/riv_hierarchy.dart';
@@ -9,6 +10,7 @@ import '../painting/timeline_animation_painter.dart';
 import '../services/autosave_service.dart';
 import '../services/document_history.dart';
 import 'editor_document.dart';
+import 'scene_hierarchy_controller.dart';
 
 /// How times are displayed across the editor UI.
 enum TimeDisplayMode {
@@ -34,6 +36,9 @@ class EditorState extends ChangeNotifier {
 
   final AutosaveService _autosave;
   final DocumentHistory _history = DocumentHistory();
+
+  /// Scene hierarchy UI state (selection, expansion, locks, search).
+  final SceneHierarchyController scene = SceneHierarchyController();
 
   EditorDocument? _document;
   rive.Artboard? _activeArtboard;
@@ -240,6 +245,86 @@ class EditorState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // -- Scene hierarchy operations ------------------------------------------
+
+  /// Renames a component. Rename does not shift indices, so no remap.
+  Future<bool> renameComponent(SceneNodeRef ref, String newName) {
+    return _structuralEdit(ref, requiresRemap: false, (editor) {
+      final ok = editor.rename(ref.componentIndex, newName);
+      return ok ? const RivStructuralResult.success({}) : null;
+    });
+  }
+
+  /// Toggles the runtime Hidden flag on a drawable component.
+  Future<bool> setComponentHidden(SceneNodeRef ref, bool hidden) {
+    return _structuralEdit(ref, requiresRemap: false, (editor) {
+      final ok = editor.setHidden(ref.componentIndex, hidden);
+      return ok ? const RivStructuralResult.success({}) : null;
+    });
+  }
+
+  /// Whether the component is hidden in the file.
+  bool isComponentHidden(SceneNodeRef ref) {
+    final raw = _document?.editor?.raw;
+    if (raw == null) return false;
+    return RivArtboardEditor(raw, ref.artboardOrdinal)
+        .isHidden(ref.componentIndex);
+  }
+
+  /// Moves a component under a new parent (drag and drop reorder).
+  Future<bool> reparentComponent(
+    SceneNodeRef ref,
+    int newParentIndex, {
+    int? insertAfterSibling,
+  }) {
+    return _structuralEdit(
+      ref,
+      (editor) => editor.reparent(
+        ref.componentIndex,
+        newParentIndex,
+        insertAfterSibling: insertAfterSibling,
+      ),
+    );
+  }
+
+  /// Duplicates a component subtree.
+  Future<bool> duplicateComponent(SceneNodeRef ref) {
+    return _structuralEdit(ref, (editor) => editor.duplicate(ref.componentIndex));
+  }
+
+  /// Deletes a component subtree.
+  Future<bool> deleteComponent(SceneNodeRef ref) {
+    return _structuralEdit(ref, (editor) => editor.delete(ref.componentIndex));
+  }
+
+  /// Runs a structural operation transactionally: snapshot for undo,
+  /// apply, remap UI state, and reload the engine. Locked components
+  /// reject edits at this boundary.
+  Future<bool> _structuralEdit(
+    SceneNodeRef ref,
+    RivStructuralResult? Function(RivArtboardEditor) operation, {
+    bool requiresRemap = true,
+  }) async {
+    final doc = _document;
+    final editor = doc?.editor;
+    if (doc == null || editor == null) return false;
+    if (scene.isLocked(ref)) return false;
+
+    final before = editor.bytes();
+    final result = operation(
+      RivArtboardEditor(editor.raw, ref.artboardOrdinal),
+    );
+    if (result == null || !result.succeeded) return false;
+
+    editor.rebuild();
+    _history.push(before);
+    _hasUnsavedChanges = true;
+    if (requiresRemap) {
+      scene.applyRemap(ref.artboardOrdinal, result.remap);
+    }
+    return _reloadEngine(doc.name, editor.bytes());
+  }
+
   /// Re-decodes [bytes] in the engine, preserving artboard/animation
   /// selection, playhead time and the inspected object where possible.
   Future<bool> _reloadEngine(String name, Uint8List bytes) async {
@@ -298,6 +383,7 @@ class EditorState extends ChangeNotifier {
     _filePath = null;
     _history.clear();
     _hasUnsavedChanges = false;
+    scene.reset();
     _autosave.start(documentName: name, snapshotProvider: exportBytes);
     selectArtboard(doc.artboards.first);
     return true;
@@ -353,6 +439,7 @@ class EditorState extends ChangeNotifier {
   @override
   void dispose() {
     _autosave.dispose();
+    scene.dispose();
     _document?.dispose();
     painter.dispose();
     super.dispose();
