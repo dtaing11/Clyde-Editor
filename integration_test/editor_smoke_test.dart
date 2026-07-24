@@ -14,8 +14,9 @@ import 'package:rive_editor/src/features/editor/widgets/viewport_panel.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('editor shell loads demo document and renders artboard',
-      (tester) async {
+  testWidgets('editor shell loads demo document and renders artboard', (
+    tester,
+  ) async {
     await rive.RiveNative.init();
     await tester.pumpWidget(const RiveEditorApp());
 

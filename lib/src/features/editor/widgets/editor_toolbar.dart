@@ -18,9 +18,9 @@ class EditorToolbar extends StatelessWidget {
     final name = file.name.replaceAll('.riv', '');
     final ok = await state.loadFromBytes(name, bytes);
     if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open Rive file')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open Rive file')));
     }
   }
 
@@ -52,7 +52,9 @@ class EditorToolbar extends StatelessWidget {
             Text(
               '${state.document!.name}.riv',
               style: const TextStyle(
-                  fontSize: 12, color: EditorTheme.textSecondary),
+                fontSize: 12,
+                color: EditorTheme.textSecondary,
+              ),
             ),
         ],
       ),

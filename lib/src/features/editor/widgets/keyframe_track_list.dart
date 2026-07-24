@@ -59,8 +59,11 @@ class _ObjectHeaderRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          const Icon(Icons.widgets_outlined,
-              size: 12, color: EditorTheme.textSecondary),
+          const Icon(
+            Icons.widgets_outlined,
+            size: 12,
+            color: EditorTheme.textSecondary,
+          ),
           const SizedBox(width: 6),
           Text(
             name,

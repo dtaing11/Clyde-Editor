@@ -49,7 +49,7 @@ class RivAnimationModel {
 /// All keyed properties for one animated component.
 class RivKeyedObjectModel {
   RivKeyedObjectModel({required this.objectId, required String objectName})
-      : _objectName = objectName; // ignore: prefer_initializing_formals
+    : _objectName = objectName; // ignore: prefer_initializing_formals
 
   /// Index of the animated component in the artboard object list.
   final int objectId;
@@ -90,9 +90,9 @@ enum RivInterpolationType {
   final int id;
 
   static RivInterpolationType fromId(int id) => values.firstWhere(
-        (type) => type.id == id,
-        orElse: () => RivInterpolationType.linear,
-      );
+    (type) => type.id == id,
+    orElse: () => RivInterpolationType.linear,
+  );
 }
 
 /// A single keyframe on a property track.
