@@ -19,8 +19,7 @@ void main() {
     });
 
     test('reads strings', () {
-      final reader =
-          RivBinaryReader(Uint8List.fromList([3, 0x61, 0x62, 0x63]));
+      final reader = RivBinaryReader(Uint8List.fromList([3, 0x61, 0x62, 0x63]));
       expect(reader.readString(), 'abc');
     });
 

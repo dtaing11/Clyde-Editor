@@ -50,12 +50,12 @@ class RivParser {
           context?.beginAnimation(_readLinearAnimation());
           if (context == null) _skipObject();
         case RivTypeKeys.keyedObject:
-          final objectId = _readSingleUintProperty(
-              RivPropertyKeys.keyedObjectId);
+          final objectId =
+              _readSingleUintProperty(RivPropertyKeys.keyedObjectId);
           context?.beginKeyedObject(objectId);
         case RivTypeKeys.keyedProperty:
-          final propertyKey = _readSingleUintProperty(
-              RivPropertyKeys.keyedPropertyKey);
+          final propertyKey =
+              _readSingleUintProperty(RivPropertyKeys.keyedPropertyKey);
           context?.beginKeyedProperty(propertyKey);
         case RivTypeKeys.keyFrameDouble:
           final keyframe = _readKeyFrame(readValue: true);
@@ -103,7 +103,9 @@ class RivParser {
     _reader.readVarUint(); // fileId, unused.
 
     final propertyKeys = <int>[];
-    for (var key = _reader.readVarUint(); key != 0; key = _reader.readVarUint()) {
+    for (var key = _reader.readVarUint();
+        key != 0;
+        key = _reader.readVarUint()) {
       propertyKeys.add(key);
     }
     var currentInt = 0;
@@ -255,7 +257,6 @@ class RivParser {
       }
     }
   }
-
 }
 
 /// Tracks the current artboard/animation/keyed-object/property while the

@@ -19,7 +19,6 @@ base class TimelineAnimationPainter extends rive.BasicArtboardPainter {
   bool _playing = false;
   double _time = 0;
 
-
   double get time => _time;
   bool get isPlaying => _playing;
   double get duration => _animation?.duration ?? 0;

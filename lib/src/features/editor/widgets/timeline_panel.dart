@@ -27,8 +27,8 @@ class TimelinePanel extends StatelessWidget {
           Text(
             '${state.currentTime.toStringAsFixed(2)}s / '
             '${state.duration.toStringAsFixed(2)}s',
-            style: const TextStyle(
-                fontSize: 11, color: EditorTheme.textSecondary),
+            style:
+                const TextStyle(fontSize: 11, color: EditorTheme.textSecondary),
           ),
       ],
       child: animation == null

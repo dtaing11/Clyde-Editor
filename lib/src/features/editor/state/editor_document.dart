@@ -38,7 +38,7 @@ class EditorDocument {
     if (file == null) return null;
 
     final artboards = <rive.Artboard>[];
-    for (var i = 0; ; i++) {
+    for (var i = 0;; i++) {
       final artboard = file.artboardAt(i);
       if (artboard == null) break;
       artboards.add(artboard);
@@ -66,15 +66,15 @@ class EditorDocument {
   /// Animations defined on [artboard].
   List<rive.Animation> animationsOf(rive.Artboard artboard) {
     return [
-      for (var i = 0; i < artboard.animationCount(); i++) artboard.animationAt(i),
+      for (var i = 0; i < artboard.animationCount(); i++)
+        artboard.animationAt(i),
     ];
   }
 
   /// Parsed keyframe model for [artboardName]/[animationName], or `null`.
   RivAnimationModel? animationModel(String artboardName, String animationName) {
-    final artboard = model?.artboards
-        .where((a) => a.name == artboardName)
-        .firstOrNull;
+    final artboard =
+        model?.artboards.where((a) => a.name == artboardName).firstOrNull;
     return artboard?.animations
         .where((a) => a.name == animationName)
         .firstOrNull;
