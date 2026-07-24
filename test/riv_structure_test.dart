@@ -214,7 +214,6 @@ void main() {
       expect(editor.isHidden(target.componentIndex), isFalse);
     });
   });
-
 }
 
 int _count(RivHierarchyNode node) =>
