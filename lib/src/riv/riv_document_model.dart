@@ -101,6 +101,7 @@ class RivKeyFrameModel {
     required this.frame,
     required this.interpolation,
     this.value,
+    this.rawObjectIndex = -1,
   });
 
   /// Position in frames (divide by animation fps for seconds).
@@ -111,6 +112,10 @@ class RivKeyFrameModel {
   /// Numeric value for double keyframes; `null` for other kinds
   /// (color/id/bool) until the editor supports editing them.
   final double? value;
+
+  /// Index of the backing object in the raw document, used to map this
+  /// keyframe back to bytes when editing. `-1` for synthetic keyframes.
+  final int rawObjectIndex;
 
   double timeInSeconds(int fps) => fps > 0 ? frame / fps : 0;
 }
