@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -18,10 +20,38 @@ class EditorToolbar extends StatelessWidget {
     final name = file.name.replaceAll('.riv', '');
     final ok = await state.loadFromBytes(name, bytes);
     if (!ok && context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Could not open Rive file')));
+      _showMessage(context, 'Could not open Rive file');
     }
+  }
+
+  Future<void> _saveFile(BuildContext context) async {
+    final bytes = state.exportBytes();
+    final doc = state.document;
+    if (bytes == null || doc == null) return;
+
+    final location = await getSaveLocation(
+      suggestedName: '${doc.name}.riv',
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'Rive files', extensions: ['riv']),
+      ],
+    );
+    if (location == null) return;
+
+    try {
+      await File(location.path).writeAsBytes(bytes, flush: true);
+      state.markSaved();
+      if (context.mounted) {
+        _showMessage(context, 'Saved ${location.path.split('/').last}');
+      }
+    } on FileSystemException catch (e) {
+      if (context.mounted) _showMessage(context, 'Save failed: ${e.message}');
+    }
+  }
+
+  void _showMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -55,13 +85,21 @@ class EditorToolbar extends StatelessWidget {
             label: 'Open',
             onPressed: () => _openFile(context),
           ),
+          _ToolbarButton(
+            icon: Icons.save_outlined,
+            label: 'Save',
+            onPressed: state.canEdit ? () => _saveFile(context) : null,
+          ),
           const Spacer(),
           if (state.document != null)
             Text(
-              '${state.document!.name}.riv',
-              style: const TextStyle(
+              '${state.document!.name}.riv'
+              '${state.hasUnsavedChanges ? ' •' : ''}',
+              style: TextStyle(
                 fontSize: 12,
-                color: EditorTheme.textSecondary,
+                color: state.hasUnsavedChanges
+                    ? EditorTheme.accent
+                    : EditorTheme.textSecondary,
               ),
             ),
         ],
@@ -79,7 +117,7 @@ class _ToolbarButton extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +127,9 @@ class _ToolbarButton extends StatelessWidget {
       label: Text(label, style: const TextStyle(fontSize: 12)),
       style: TextButton.styleFrom(
         foregroundColor: EditorTheme.textPrimary,
+        disabledForegroundColor: EditorTheme.textSecondary.withValues(
+          alpha: 0.5,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 10),
       ),
     );

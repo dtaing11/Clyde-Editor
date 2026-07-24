@@ -80,6 +80,21 @@ class EditorState extends ChangeNotifier {
   /// Whether an undo snapshot is available.
   bool get canUndo => _undoStack.isNotEmpty;
 
+  /// Whether there are edits that have not been saved.
+  bool get hasUnsavedChanges => _hasUnsavedChanges;
+  bool _hasUnsavedChanges = false;
+
+  /// Current bytes of the document including edits, or `null` when the
+  /// document is not editable.
+  Uint8List? exportBytes() => _document?.editor?.bytes();
+
+  /// Marks the document saved (called after a successful export).
+  void markSaved() {
+    if (!_hasUnsavedChanges) return;
+    _hasUnsavedChanges = false;
+    notifyListeners();
+  }
+
   TimeDisplayMode _timeDisplayMode = TimeDisplayMode.frames;
 
   /// Current unit used to display times in the timeline and inspector.
@@ -122,6 +137,7 @@ class EditorState extends ChangeNotifier {
     if (!changed) return false;
 
     _pushUndo(before);
+    _hasUnsavedChanges = true;
     return _reloadEngine(doc.name, editor.bytes());
   }
 
@@ -130,6 +146,7 @@ class EditorState extends ChangeNotifier {
     final doc = _document;
     if (doc == null || _undoStack.isEmpty) return false;
     final bytes = _undoStack.removeLast();
+    _hasUnsavedChanges = _undoStack.isNotEmpty;
     return _reloadEngine(doc.name, bytes);
   }
 
@@ -194,6 +211,7 @@ class EditorState extends ChangeNotifier {
     _document?.dispose();
     _document = doc;
     _undoStack.clear();
+    _hasUnsavedChanges = false;
     selectArtboard(doc.artboards.first);
     return true;
   }
