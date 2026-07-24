@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/editor_theme.dart';
+import 'services/file_service.dart';
 import 'state/editor_state.dart';
+import 'widgets/canvas_panel.dart';
 import 'widgets/editor_toolbar.dart';
-import 'widgets/hierarchy_panel.dart';
+import 'widgets/animations_panel.dart';
 import 'widgets/inspector_panel.dart';
+import 'widgets/scene_hierarchy_panel.dart';
 import 'widgets/timeline_panel.dart';
-import 'widgets/viewport_panel.dart';
 
-/// Main editor screen: toolbar on top, hierarchy on the left, viewport
-/// in the center, inspector on the right and timeline docked below.
+/// Main editor screen.
+///
+/// Layout: toolbar on top; left dock with scene hierarchy over the
+/// animations list; canvas in the center; inspector on the right;
+/// timeline docked below. Global keyboard shortcuts are bound here.
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
 
@@ -19,6 +25,7 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   late final EditorState _state;
+  final FileService _files = FileService();
 
   @override
   void initState() {
@@ -34,39 +41,70 @@ class _EditorScreenState extends State<EditorScreen> {
     super.dispose();
   }
 
+  Map<ShortcutActivator, VoidCallback> get _shortcuts => {
+    const SingleActivator(LogicalKeyboardKey.keyZ, meta: true): _state.undo,
+    const SingleActivator(LogicalKeyboardKey.keyZ, control: true): _state.undo,
+    const SingleActivator(LogicalKeyboardKey.keyZ, meta: true, shift: true):
+        _state.redo,
+    const SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true):
+        _state.redo,
+    const SingleActivator(LogicalKeyboardKey.keyN, meta: true): () =>
+        _state.newDocument(),
+    const SingleActivator(LogicalKeyboardKey.keyN, control: true): () =>
+        _state.newDocument(),
+    const SingleActivator(LogicalKeyboardKey.space): _state.togglePlay,
+  };
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ListenableBuilder(
-        listenable: _state,
-        builder: (context, _) {
-          return Column(
-            children: [
-              EditorToolbar(state: _state),
-              Expanded(
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: EditorTheme.sidePanelWidth,
-                      child: HierarchyPanel(state: _state),
+      body: CallbackShortcuts(
+        bindings: _shortcuts,
+        child: Focus(
+          autofocus: true,
+          child: ListenableBuilder(
+            listenable: _state,
+            builder: (context, _) {
+              return Column(
+                children: [
+                  EditorToolbar(state: _state, files: _files),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: EditorTheme.sidePanelWidth,
+                          child: Column(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: SceneHierarchyPanel(state: _state),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: AnimationsPanel(state: _state),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const VerticalDivider(width: 1),
+                        Expanded(child: CanvasPanel(state: _state)),
+                        const VerticalDivider(width: 1),
+                        SizedBox(
+                          width: EditorTheme.sidePanelWidth,
+                          child: InspectorPanel(state: _state),
+                        ),
+                      ],
                     ),
-                    const VerticalDivider(width: 1),
-                    Expanded(child: ViewportPanel(state: _state)),
-                    const VerticalDivider(width: 1),
-                    SizedBox(
-                      width: EditorTheme.sidePanelWidth,
-                      child: InspectorPanel(state: _state),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                height: EditorTheme.timelineHeight,
-                child: TimelinePanel(state: _state),
-              ),
-            ],
-          );
-        },
+                  ),
+                  SizedBox(
+                    height: EditorTheme.timelineHeight,
+                    child: TimelinePanel(state: _state),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }

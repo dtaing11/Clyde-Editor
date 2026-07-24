@@ -267,8 +267,10 @@ class EditorState extends ChangeNotifier {
   bool isComponentHidden(SceneNodeRef ref) {
     final raw = _document?.editor?.raw;
     if (raw == null) return false;
-    return RivArtboardEditor(raw, ref.artboardOrdinal)
-        .isHidden(ref.componentIndex);
+    return RivArtboardEditor(
+      raw,
+      ref.artboardOrdinal,
+    ).isHidden(ref.componentIndex);
   }
 
   /// Moves a component under a new parent (drag and drop reorder).
@@ -289,7 +291,10 @@ class EditorState extends ChangeNotifier {
 
   /// Duplicates a component subtree.
   Future<bool> duplicateComponent(SceneNodeRef ref) {
-    return _structuralEdit(ref, (editor) => editor.duplicate(ref.componentIndex));
+    return _structuralEdit(
+      ref,
+      (editor) => editor.duplicate(ref.componentIndex),
+    );
   }
 
   /// Deletes a component subtree.

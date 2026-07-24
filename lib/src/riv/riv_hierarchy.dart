@@ -20,8 +20,7 @@ class RivHierarchyNode {
   /// Human-readable label combining name and type.
   String get label => name.isNotEmpty ? name : typeDisplayName;
 
-  String get typeDisplayName =>
-      _typeNames[typeKey] ?? 'Component ($typeKey)';
+  String get typeDisplayName => _typeNames[typeKey] ?? 'Component ($typeKey)';
 
   static const Map<int, String> _typeNames = {
     RivTypeKeys.artboard: 'Artboard',
@@ -100,9 +99,7 @@ abstract final class RivHierarchy {
       final node = _node(object, components.length);
       components.add(node);
 
-      final parentProperty = object.property(
-        RivPropertyKeys.componentParentId,
-      );
+      final parentProperty = object.property(RivPropertyKeys.componentParentId);
       if (parentProperty != null &&
           parentProperty.fieldType == RivFieldType.uint) {
         final parentId = parentProperty.uintValue;
@@ -147,11 +144,14 @@ abstract final class RivHierarchy {
 
       result.add(
         RivAssetInfo(
-          name: nameProperty != null && nameProperty.fieldType == RivFieldType.string
+          name:
+              nameProperty != null &&
+                  nameProperty.fieldType == RivFieldType.string
               ? _decodeString(nameProperty.valueBytes)
               : '',
           typeKey: object.typeKey,
-          assetId: idProperty != null && idProperty.fieldType == RivFieldType.uint
+          assetId:
+              idProperty != null && idProperty.fieldType == RivFieldType.uint
               ? idProperty.uintValue
               : -1,
           isEmbedded: isEmbedded,
@@ -167,7 +167,8 @@ abstract final class RivHierarchy {
     return RivHierarchyNode(
       componentIndex: index,
       typeKey: object.typeKey,
-      name: nameProperty != null && nameProperty.fieldType == RivFieldType.string
+      name:
+          nameProperty != null && nameProperty.fieldType == RivFieldType.string
           ? _decodeString(nameProperty.valueBytes)
           : '',
     );

@@ -26,7 +26,12 @@ class FileService {
   openRiveFile() async {
     final file = await openFile(acceptedTypeGroups: const [_rivTypeGroup]);
     if (file == null) {
-      return (result: FileOpResult.cancelled, name: null, path: null, bytes: null);
+      return (
+        result: FileOpResult.cancelled,
+        name: null,
+        path: null,
+        bytes: null,
+      );
     }
     try {
       final bytes = await file.readAsBytes();

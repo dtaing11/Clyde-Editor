@@ -13,9 +13,7 @@ import 'riv_raw_document.dart';
 /// component index (selection, locks, expansion).
 class RivStructuralResult {
   const RivStructuralResult.success(this.remap) : succeeded = true;
-  const RivStructuralResult.failure()
-    : succeeded = false,
-      remap = const {};
+  const RivStructuralResult.failure() : succeeded = false, remap = const {};
 
   final bool succeeded;
   final Map<int, int> remap;
@@ -56,7 +54,15 @@ class RivArtboardEditor {
   /// Object types forming a keyed-animation block under a KeyedObject.
   static const Set<int> _keyedBlockTypes = {
     RivTypeKeys.keyedProperty,
-    29, 30, 37, 50, 84, 142, 450, 170, 171,
+    29,
+    30,
+    37,
+    50,
+    84,
+    142,
+    450,
+    170,
+    171,
   };
 
   // -- Public operations ---------------------------------------------------
@@ -68,9 +74,9 @@ class RivArtboardEditor {
     final object = span.componentAt(componentIndex);
     if (object == null) return false;
 
-    final encoded = (RivBinaryWriter()
-          ..writeBytes(Uint8List.fromList(newName.codeUnits)))
-        .takeBytes();
+    final encoded =
+        (RivBinaryWriter()..writeBytes(Uint8List.fromList(newName.codeUnits)))
+            .takeBytes();
     final property = object.property(RivPropertyKeys.componentName);
     if (property != null) {
       property.valueBytes = encoded;
@@ -144,13 +150,14 @@ class RivArtboardEditor {
       final subtree = span.subtreeOf(componentIndex);
       if (subtree.contains(newParentIndex)) return null; // Own descendant.
 
-      final movedObjects = span.rawObjectsOfComponents(subtree);
-      document.objects.removeWhere(movedObjects.contains);
-
+      // Resolve the insertion anchor before mutating the stream.
       final anchor = insertAfterSibling != null
           ? span.lastRawObjectOfSubtree(insertAfterSibling, exclude: subtree)
           : parent;
-      var insertAt = document.objects.indexOf(anchor) + 1;
+
+      final movedObjects = span.rawObjectsOfComponents(subtree);
+      document.objects.removeWhere(movedObjects.contains);
+      final insertAt = document.objects.indexOf(anchor) + 1;
       document.objects.insertAll(insertAt, movedObjects);
 
       return _ReferencePlan.forReparent(moved, parent);
@@ -165,6 +172,8 @@ class RivArtboardEditor {
       final original = span.componentAt(componentIndex);
       if (original == null) return null;
 
+      final componentsBefore = span.components;
+      final parentObject = span.parentObjectOf(componentIndex);
       final subtree = span.subtreeOf(componentIndex);
       final originals = span.rawObjectsOfComponents(subtree);
       final clones = [for (final o in originals) _cloneObject(o)];
@@ -172,18 +181,21 @@ class RivArtboardEditor {
         for (var i = 0; i < originals.length; i++) originals[i]: clones[i],
       };
 
+      // Plan reference redirects from the pristine pre-mutation state,
+      // pairing clone properties by key (the copy-suffix rename below
+      // may prepend a name property and shift positions).
+      final plan = _ReferencePlan.forDuplicate(
+        componentsBefore: componentsBefore,
+        cloneByOriginal: cloneByOriginal,
+        cloneRootParent: parentObject,
+        cloneRoot: cloneByOriginal[original]!,
+      );
+
       final insertAt = document.objects.indexOf(originals.last) + 1;
       document.objects.insertAll(insertAt, clones);
+      _appendCopySuffix(cloneByOriginal[original]!);
 
-      final cloneRoot = cloneByOriginal[original]!;
-      _appendCopySuffix(cloneRoot);
-
-      return _ReferencePlan.forDuplicate(
-        span: span,
-        cloneByOriginal: cloneByOriginal,
-        cloneRootParent: span.parentObjectOf(componentIndex),
-        cloneRoot: cloneRoot,
-      );
+      return plan;
     });
   }
 
@@ -378,9 +390,11 @@ class RivArtboardEditor {
     final currentName = property == null
         ? ''
         : _decodeString(property.valueBytes);
-    final encoded = (RivBinaryWriter()
-          ..writeBytes(Uint8List.fromList('$currentName copy'.trim().codeUnits)))
-        .takeBytes();
+    final encoded =
+        (RivBinaryWriter()..writeBytes(
+              Uint8List.fromList('$currentName copy'.trim().codeUnits),
+            ))
+            .takeBytes();
     if (property != null) {
       property.valueBytes = encoded;
     } else {
@@ -430,7 +444,9 @@ class _ReferencePlan {
     this.deleted = const {},
     Map<RivRawObject, RivRawObject> identityRedirects = const {},
     Map<RivRawProperty, RivRawObject> propertyOverrides = const {},
+    // ignore: prefer_initializing_formals
   }) : _identityRedirects = identityRedirects,
+       // ignore: prefer_initializing_formals
        _propertyOverrides = propertyOverrides;
 
   factory _ReferencePlan.forDelete(Set<RivRawObject> deleted) =>
@@ -455,23 +471,28 @@ class _ReferencePlan {
   /// Duplicate: clone-internal references point at sibling clones, the
   /// clone root parents onto the original's parent, and clone-external
   /// references resolve like the originals they were copied from.
+  /// Targets resolve against [componentsBefore], the component list
+  /// captured before the stream was mutated.
   factory _ReferencePlan.forDuplicate({
-    required _Span span,
+    required List<RivRawObject> componentsBefore,
     required Map<RivRawObject, RivRawObject> cloneByOriginal,
     required RivRawObject? cloneRootParent,
     required RivRawObject cloneRoot,
   }) {
     final overrides = <RivRawProperty, RivRawObject>{};
     cloneByOriginal.forEach((original, clone) {
-      for (var i = 0; i < original.properties.length; i++) {
-        final sourceProperty = original.properties[i];
-        final cloneProperty = clone.properties[i];
+      for (final sourceProperty in original.properties) {
         if (!RivComponentRefs.uintReferenceKeys.contains(sourceProperty.key) ||
             sourceProperty.fieldType != RivFieldType.uint) {
           continue;
         }
-        final target = span.componentAt(sourceProperty.uintValue);
-        if (target == null) continue;
+        final cloneProperty = clone.property(sourceProperty.key);
+        if (cloneProperty == null) continue;
+        final targetIndex = sourceProperty.uintValue;
+        if (targetIndex < 0 || targetIndex >= componentsBefore.length) {
+          continue;
+        }
+        final target = componentsBefore[targetIndex];
         overrides[cloneProperty] = cloneByOriginal[target] ?? target;
       }
     });
