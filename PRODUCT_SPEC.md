@@ -768,7 +768,7 @@ Track decisions that are not yet made. Nothing here may be silently resolved in 
 | # | Question | Owner | Status |
 |---|---|---|---|
 | 1 | State management: Riverpod vs. Bloc vs. signals — pick one, document here | | Open |
-| 2 | Rive runtime binding strategy: FFI vs. platform channels vs. `rive_native` | | Open |
+| 2 | Rive runtime binding strategy: FFI vs. platform channels vs. `rive_native` | | Resolved: `rive_native` (PR #1-#7 built on it; revisit only if the package blocks an editor feature) |
 | 3 | Document persistence format for editor-only metadata alongside `.riv` | | Open |
 | 4 | Web renderer parity — does Phase 1 target web at all? | | Open |
 | 5 | Collaboration transport: OT vs. CRDT (constrains §4.4 command design) | | Open |
@@ -781,3 +781,4 @@ Track decisions that are not yet made. Nothing here may be silently resolved in 
 | Date | Change | PR |
 |---|---|---|
 | 2026-07-24 | Initial specification | — |
+| 2026-07-24 | §4.4 command system implemented: `EditorCommand`, `CommandProcessor` (undo/redo, merge coalescing, bounded history), serialisation codec registry, typed `CommandFailure`s. All existing mutations (keyframe retime, rename, hide, reparent, duplicate, delete, add artboard, import asset) routed through commands with execute→undo byte-identity tests. Resolved open question #2 (`rive_native`). | refactor/core-command-system |

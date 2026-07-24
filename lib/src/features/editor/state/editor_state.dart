@@ -2,13 +2,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../core/commands/command_processor.dart';
+import '../../../core/commands/document_commands.dart';
+import '../../../core/commands/editor_command.dart';
 import '../../../riv/riv_artboard_editor.dart';
 import '../../../riv/riv_document_builder.dart';
+import '../../../riv/riv_document_editor.dart';
 import '../../../riv/riv_document_model.dart';
 import '../../../riv/riv_hierarchy.dart';
 import '../painting/timeline_animation_painter.dart';
 import '../services/autosave_service.dart';
-import '../services/document_history.dart';
 import 'editor_document.dart';
 import 'scene_hierarchy_controller.dart';
 
@@ -24,18 +27,23 @@ enum TimeDisplayMode {
 /// Central mutable state of the editor, exposed as a [ChangeNotifier].
 ///
 /// Widgets listen to this controller instead of talking to the engine
-/// directly, keeping UI and engine concerns separate (MVC-ish).
-class EditorState extends ChangeNotifier {
+/// directly. Every document mutation is dispatched as an
+/// [EditorCommand] through the [CommandProcessor]; this class provides
+/// the [DocumentContext] the commands run against.
+class EditorState extends ChangeNotifier implements DocumentContext {
   EditorState({AutosaveService? autosave})
     : _autosave = autosave ?? AutosaveService() {
     painter = TimelineAnimationPainter(onTimeChanged: _onPainterTime);
+    commands = CommandProcessor(context: this);
   }
 
   /// Painter shared by the viewport; drives playback.
   late final TimelineAnimationPainter painter;
 
+  /// Executes and records every document mutation (§4.4).
+  late final CommandProcessor commands;
+
   final AutosaveService _autosave;
-  final DocumentHistory _history = DocumentHistory();
 
   /// Scene hierarchy UI state (selection, expansion, locks, search).
   final SceneHierarchyController scene = SceneHierarchyController();
@@ -87,8 +95,18 @@ class EditorState extends ChangeNotifier {
   /// Whether the current document supports byte-level editing.
   bool get canEdit => _document?.editor != null;
 
-  bool get canUndo => _history.canUndo;
-  bool get canRedo => _history.canRedo;
+  bool get canUndo => commands.canUndo;
+  bool get canRedo => commands.canRedo;
+
+  // -- DocumentContext -----------------------------------------------------
+
+  @override
+  RivDocumentEditor? get editor => _document?.editor;
+
+  @override
+  void reportComponentRemap(int artboardOrdinal, Map<int, int> remap) {
+    scene.applyRemap(artboardOrdinal, remap);
+  }
 
   /// Disk path of the current document, `null` for unsaved documents.
   String? get filePath => _filePath;
@@ -148,47 +166,43 @@ class EditorState extends ChangeNotifier {
     }
   }
 
-  /// Moves [keyframe] to [newFrame] and reloads the engine so playback
-  /// reflects the change. Returns `true` on success.
-  Future<bool> retimeKeyframe(RivKeyFrameModel keyframe, int newFrame) async {
+  /// Dispatches [command] through the processor; on success the engine
+  /// is reloaded so playback reflects the new document.
+  Future<bool> dispatch(EditorCommand command) async {
     final doc = _document;
-    final editor = doc?.editor;
-    final animation = selectedAnimationModel;
-    if (doc == null || editor == null || animation == null) return false;
-
-    final before = editor.bytes();
-    final changed = editor.retimeKeyframe(
-      keyframe,
-      newFrame,
-      durationFrames: animation.durationFrames,
-    );
-    if (!changed) return false;
-
-    _history.push(before);
+    if (doc == null) return false;
+    if (!commands.execute(command).succeeded) return false;
     _hasUnsavedChanges = true;
-    return _reloadEngine(doc.name, editor.bytes());
+    return _reloadEngine(doc.name, doc.editor!.bytes());
   }
 
-  /// Reverts the most recent edit.
+  /// Moves [keyframe] to [newFrame]. Returns `true` on success.
+  Future<bool> retimeKeyframe(RivKeyFrameModel keyframe, int newFrame) {
+    final animation = selectedAnimationModel;
+    if (animation == null) return Future.value(false);
+    return dispatch(
+      RetimeKeyframeCommand(
+        rawObjectIndex: keyframe.rawObjectIndex,
+        newFrame: newFrame,
+        durationFrames: animation.durationFrames,
+      ),
+    );
+  }
+
+  /// Reverts the most recent command.
   Future<bool> undo() async {
     final doc = _document;
-    final current = exportBytes();
-    if (doc == null || current == null) return false;
-    final bytes = _history.undo(current);
-    if (bytes == null) return false;
+    if (doc == null || !commands.undo().succeeded) return false;
     _hasUnsavedChanges = true;
-    return _reloadEngine(doc.name, bytes);
+    return _reloadEngine(doc.name, doc.editor!.bytes());
   }
 
-  /// Re-applies the most recently undone edit.
+  /// Re-applies the most recently undone command.
   Future<bool> redo() async {
     final doc = _document;
-    final current = exportBytes();
-    if (doc == null || current == null) return false;
-    final bytes = _history.redo(current);
-    if (bytes == null) return false;
+    if (doc == null || !commands.redo().succeeded) return false;
     _hasUnsavedChanges = true;
-    return _reloadEngine(doc.name, bytes);
+    return _reloadEngine(doc.name, doc.editor!.bytes());
   }
 
   /// Creates a blank document with one artboard.
@@ -201,16 +215,7 @@ class EditorState extends ChangeNotifier {
 
   /// Appends a new artboard to the document and selects it.
   Future<bool> addArtboard(String name) async {
-    final doc = _document;
-    final editor = doc?.editor;
-    if (doc == null || editor == null) return false;
-
-    final before = editor.bytes();
-    RivDocumentBuilder.appendArtboard(editor.raw, name: name);
-    editor.rebuild();
-    _history.push(before);
-    _hasUnsavedChanges = true;
-    final ok = await _reloadEngine(doc.name, editor.bytes());
+    final ok = await dispatch(AddArtboardCommand(name: name));
     if (ok) {
       final added = _document?.artboards
           .where((a) => a.name == name)
@@ -221,22 +226,10 @@ class EditorState extends ChangeNotifier {
   }
 
   /// Embeds an image asset into the document.
-  Future<bool> importImageAsset(String name, Uint8List assetBytes) async {
-    final doc = _document;
-    final editor = doc?.editor;
-    if (doc == null || editor == null) return false;
-
-    final before = editor.bytes();
-    RivDocumentBuilder.embedImageAsset(
-      editor.raw,
-      name: name,
-      bytes: assetBytes,
-      assetId: RivDocumentBuilder.nextAssetId(editor.raw),
+  Future<bool> importImageAsset(String name, Uint8List assetBytes) {
+    return dispatch(
+      ImportImageAssetCommand(name: name, assetBytes: assetBytes),
     );
-    editor.rebuild();
-    _history.push(before);
-    _hasUnsavedChanges = true;
-    return _reloadEngine(doc.name, editor.bytes());
   }
 
   /// Records where the document lives on disk (after open or save-as).
@@ -247,20 +240,28 @@ class EditorState extends ChangeNotifier {
 
   // -- Scene hierarchy operations ------------------------------------------
 
-  /// Renames a component. Rename does not shift indices, so no remap.
+  /// Renames a component (no index shift, so no remap).
   Future<bool> renameComponent(SceneNodeRef ref, String newName) {
-    return _structuralEdit(ref, requiresRemap: false, (editor) {
-      final ok = editor.rename(ref.componentIndex, newName);
-      return ok ? const RivStructuralResult.success({}) : null;
-    });
+    if (scene.isLocked(ref)) return Future.value(false);
+    return dispatch(
+      RenameComponentCommand(
+        artboardOrdinal: ref.artboardOrdinal,
+        componentIndex: ref.componentIndex,
+        newName: newName,
+      ),
+    );
   }
 
   /// Toggles the runtime Hidden flag on a drawable component.
   Future<bool> setComponentHidden(SceneNodeRef ref, bool hidden) {
-    return _structuralEdit(ref, requiresRemap: false, (editor) {
-      final ok = editor.setHidden(ref.componentIndex, hidden);
-      return ok ? const RivStructuralResult.success({}) : null;
-    });
+    if (scene.isLocked(ref)) return Future.value(false);
+    return dispatch(
+      SetComponentHiddenCommand(
+        artboardOrdinal: ref.artboardOrdinal,
+        componentIndex: ref.componentIndex,
+        hidden: hidden,
+      ),
+    );
   }
 
   /// Whether the component is hidden in the file.
@@ -279,11 +280,12 @@ class EditorState extends ChangeNotifier {
     int newParentIndex, {
     int? insertAfterSibling,
   }) {
-    return _structuralEdit(
-      ref,
-      (editor) => editor.reparent(
-        ref.componentIndex,
-        newParentIndex,
+    if (scene.isLocked(ref)) return Future.value(false);
+    return dispatch(
+      ReparentComponentCommand(
+        artboardOrdinal: ref.artboardOrdinal,
+        componentIndex: ref.componentIndex,
+        newParentIndex: newParentIndex,
         insertAfterSibling: insertAfterSibling,
       ),
     );
@@ -291,43 +293,24 @@ class EditorState extends ChangeNotifier {
 
   /// Duplicates a component subtree.
   Future<bool> duplicateComponent(SceneNodeRef ref) {
-    return _structuralEdit(
-      ref,
-      (editor) => editor.duplicate(ref.componentIndex),
+    if (scene.isLocked(ref)) return Future.value(false);
+    return dispatch(
+      DuplicateComponentCommand(
+        artboardOrdinal: ref.artboardOrdinal,
+        componentIndex: ref.componentIndex,
+      ),
     );
   }
 
   /// Deletes a component subtree.
   Future<bool> deleteComponent(SceneNodeRef ref) {
-    return _structuralEdit(ref, (editor) => editor.delete(ref.componentIndex));
-  }
-
-  /// Runs a structural operation transactionally: snapshot for undo,
-  /// apply, remap UI state, and reload the engine. Locked components
-  /// reject edits at this boundary.
-  Future<bool> _structuralEdit(
-    SceneNodeRef ref,
-    RivStructuralResult? Function(RivArtboardEditor) operation, {
-    bool requiresRemap = true,
-  }) async {
-    final doc = _document;
-    final editor = doc?.editor;
-    if (doc == null || editor == null) return false;
-    if (scene.isLocked(ref)) return false;
-
-    final before = editor.bytes();
-    final result = operation(
-      RivArtboardEditor(editor.raw, ref.artboardOrdinal),
+    if (scene.isLocked(ref)) return Future.value(false);
+    return dispatch(
+      DeleteComponentCommand(
+        artboardOrdinal: ref.artboardOrdinal,
+        componentIndex: ref.componentIndex,
+      ),
     );
-    if (result == null || !result.succeeded) return false;
-
-    editor.rebuild();
-    _history.push(before);
-    _hasUnsavedChanges = true;
-    if (requiresRemap) {
-      scene.applyRemap(ref.artboardOrdinal, result.remap);
-    }
-    return _reloadEngine(doc.name, editor.bytes());
   }
 
   /// Re-decodes [bytes] in the engine, preserving artboard/animation
@@ -386,7 +369,7 @@ class EditorState extends ChangeNotifier {
     _document?.dispose();
     _document = doc;
     _filePath = null;
-    _history.clear();
+    commands.clear();
     _hasUnsavedChanges = false;
     scene.reset();
     _autosave.start(documentName: name, snapshotProvider: exportBytes);

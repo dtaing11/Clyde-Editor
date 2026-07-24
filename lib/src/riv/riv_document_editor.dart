@@ -14,7 +14,7 @@ import 'riv_raw_document.dart';
 class RivDocumentEditor {
   RivDocumentEditor._(this._raw) : model = RivParser.fromRaw(_raw);
 
-  final RivRawDocument _raw;
+  RivRawDocument _raw;
 
   /// The underlying lossless document. Structural editors
   /// ([RivArtboardEditor], builders) operate on this and then call
@@ -32,6 +32,15 @@ class RivDocumentEditor {
 
   /// Serializes the current state to `.riv` bytes.
   Uint8List bytes() => _raw.serialize();
+
+  /// Replaces the entire document with [newBytes] (undo/redo restore).
+  ///
+  /// Throws [RivFormatException] when the bytes are not a valid `.riv`
+  /// stream; the current document is left untouched in that case.
+  void replaceBytes(Uint8List newBytes) {
+    _raw = RivRawDocument.parse(newBytes);
+    rebuild();
+  }
 
   /// Moves [keyframe] to [newFrame], clamped to `0..durationFrames`.
   ///

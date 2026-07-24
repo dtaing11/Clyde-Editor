@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:rive_editor/src/features/editor/services/document_history.dart';
 import 'package:rive_editor/src/riv/riv_artboard_editor.dart';
 import 'package:rive_editor/src/riv/riv_document_builder.dart';
 import 'package:rive_editor/src/riv/riv_hierarchy.dart';
@@ -213,51 +212,6 @@ void main() {
       expect(editor.isHidden(target.componentIndex), isTrue);
       expect(editor.setHidden(target.componentIndex, false), isTrue);
       expect(editor.isHidden(target.componentIndex), isFalse);
-    });
-  });
-
-  group('DocumentHistory', () {
-    Uint8List bytes(int filler) => Uint8List.fromList([filler]);
-
-    test('undo/redo walk the timeline correctly', () {
-      final history = DocumentHistory();
-      expect(history.canUndo, isFalse);
-      expect(history.canRedo, isFalse);
-
-      history.push(bytes(1)); // State was 1, now editing to 2.
-      history.push(bytes(2)); // State was 2, now editing to 3.
-
-      final undo1 = history.undo(bytes(3));
-      expect(undo1, bytes(2));
-      expect(history.canRedo, isTrue);
-
-      final undo2 = history.undo(undo1!);
-      expect(undo2, bytes(1));
-      expect(history.canUndo, isFalse);
-
-      final redo1 = history.redo(undo2!);
-      expect(redo1, bytes(2));
-      final redo2 = history.redo(redo1!);
-      expect(redo2, bytes(3));
-      expect(history.canRedo, isFalse);
-    });
-
-    test('new edit clears the redo branch', () {
-      final history = DocumentHistory();
-      history.push(bytes(1));
-      history.undo(bytes(2));
-      expect(history.canRedo, isTrue);
-
-      history.push(bytes(1)); // Diverging edit.
-      expect(history.canRedo, isFalse);
-    });
-
-    test('depth is bounded', () {
-      final history = DocumentHistory(maxDepth: 3);
-      for (var i = 0; i < 10; i++) {
-        history.push(bytes(i));
-      }
-      expect(history.undoDepth, 3);
     });
   });
 }
