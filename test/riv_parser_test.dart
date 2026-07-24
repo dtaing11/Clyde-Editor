@@ -78,10 +78,7 @@ void main() {
     test('parses hero.riv without errors', () {
       final doc = RivParser.parse(_loadAsset('hero.riv'));
       expect(doc.artboards, isNotEmpty);
-      expect(
-        doc.artboards.expand((a) => a.animations),
-        isNotEmpty,
-      );
+      expect(doc.artboards.expand((a) => a.animations), isNotEmpty);
     });
 
     test('resolves keyed object names from components', () {

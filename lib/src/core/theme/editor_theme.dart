@@ -41,8 +41,9 @@ abstract final class EditorTheme {
         bodyColor: textPrimary,
         displayColor: textPrimary,
       ),
-      tooltipTheme:
-          const TooltipThemeData(waitDuration: Duration(milliseconds: 500)),
+      tooltipTheme: const TooltipThemeData(
+        waitDuration: Duration(milliseconds: 500),
+      ),
     );
   }
 }

@@ -23,7 +23,7 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      # Check formatting (optional)
+      # Check formatting
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed .
 
@@ -35,6 +35,20 @@ jobs:
       - name: Run Flutter tests
         run: flutter test
 
-      # Integration tests
+  # Integration tests need a desktop device, so they run on macOS.
+  integration-test:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
       - name: Run integration tests
-        run: flutter test integration_test
+        run: flutter test integration_test -d macos

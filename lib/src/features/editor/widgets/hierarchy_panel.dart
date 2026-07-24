@@ -19,8 +19,10 @@ class HierarchyPanel extends StatelessWidget {
           ? const Center(
               child: Text(
                 'No document',
-                style:
-                    TextStyle(color: EditorTheme.textSecondary, fontSize: 12),
+                style: TextStyle(
+                  color: EditorTheme.textSecondary,
+                  fontSize: 12,
+                ),
               ),
             )
           : ListView(
@@ -75,10 +77,11 @@ class _HierarchyTile extends StatelessWidget {
         color: selected ? EditorTheme.accent.withValues(alpha: 0.18) : null,
         child: Row(
           children: [
-            Icon(icon,
-                size: 14,
-                color:
-                    selected ? EditorTheme.accent : EditorTheme.textSecondary),
+            Icon(
+              icon,
+              size: 14,
+              color: selected ? EditorTheme.accent : EditorTheme.textSecondary,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
