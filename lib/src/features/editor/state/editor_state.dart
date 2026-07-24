@@ -2,8 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../riv/riv_document_builder.dart';
 import '../../../riv/riv_document_model.dart';
+import '../../../riv/riv_hierarchy.dart';
 import '../painting/timeline_animation_painter.dart';
+import '../services/autosave_service.dart';
+import '../services/document_history.dart';
 import 'editor_document.dart';
 
 /// How times are displayed across the editor UI.
@@ -20,12 +24,16 @@ enum TimeDisplayMode {
 /// Widgets listen to this controller instead of talking to the engine
 /// directly, keeping UI and engine concerns separate (MVC-ish).
 class EditorState extends ChangeNotifier {
-  EditorState() {
+  EditorState({AutosaveService? autosave})
+    : _autosave = autosave ?? AutosaveService() {
     painter = TimelineAnimationPainter(onTimeChanged: _onPainterTime);
   }
 
   /// Painter shared by the viewport; drives playback.
   late final TimelineAnimationPainter painter;
+
+  final AutosaveService _autosave;
+  final DocumentHistory _history = DocumentHistory();
 
   EditorDocument? _document;
   rive.Artboard? _activeArtboard;
@@ -34,10 +42,7 @@ class EditorState extends ChangeNotifier {
   bool _isPlaying = false;
   double _currentTime = 0;
   RivKeyedObjectModel? _selectedKeyedObject;
-  final List<Uint8List> _undoStack = [];
-
-  /// Maximum number of undo snapshots retained.
-  static const int maxUndoDepth = 50;
+  String? _filePath;
 
   EditorDocument? get document => _document;
   rive.Artboard? get activeArtboard => _activeArtboard;
@@ -77,8 +82,26 @@ class EditorState extends ChangeNotifier {
   /// Whether the current document supports byte-level editing.
   bool get canEdit => _document?.editor != null;
 
-  /// Whether an undo snapshot is available.
-  bool get canUndo => _undoStack.isNotEmpty;
+  bool get canUndo => _history.canUndo;
+  bool get canRedo => _history.canRedo;
+
+  /// Disk path of the current document, `null` for unsaved documents.
+  String? get filePath => _filePath;
+
+  /// Component trees for every artboard, for the scene hierarchy panel.
+  List<RivHierarchyNode> get hierarchyTrees {
+    final raw = _document?.editor?.raw;
+    return raw == null ? const [] : RivHierarchy.artboardTrees(raw);
+  }
+
+  /// Assets embedded in or referenced by the document.
+  List<RivAssetInfo> get assets {
+    final raw = _document?.editor?.raw;
+    return raw == null ? const [] : RivHierarchy.assets(raw);
+  }
+
+  /// Time of the most recent autosave, for status display.
+  DateTime? get lastAutosaveTime => _autosave.lastSaveTime;
 
   /// Whether there are edits that have not been saved.
   bool get hasUnsavedChanges => _hasUnsavedChanges;
@@ -136,7 +159,7 @@ class EditorState extends ChangeNotifier {
     );
     if (!changed) return false;
 
-    _pushUndo(before);
+    _history.push(before);
     _hasUnsavedChanges = true;
     return _reloadEngine(doc.name, editor.bytes());
   }
@@ -144,15 +167,77 @@ class EditorState extends ChangeNotifier {
   /// Reverts the most recent edit.
   Future<bool> undo() async {
     final doc = _document;
-    if (doc == null || _undoStack.isEmpty) return false;
-    final bytes = _undoStack.removeLast();
-    _hasUnsavedChanges = _undoStack.isNotEmpty;
+    final current = exportBytes();
+    if (doc == null || current == null) return false;
+    final bytes = _history.undo(current);
+    if (bytes == null) return false;
+    _hasUnsavedChanges = true;
     return _reloadEngine(doc.name, bytes);
   }
 
-  void _pushUndo(Uint8List bytes) {
-    _undoStack.add(bytes);
-    if (_undoStack.length > maxUndoDepth) _undoStack.removeAt(0);
+  /// Re-applies the most recently undone edit.
+  Future<bool> redo() async {
+    final doc = _document;
+    final current = exportBytes();
+    if (doc == null || current == null) return false;
+    final bytes = _history.redo(current);
+    if (bytes == null) return false;
+    _hasUnsavedChanges = true;
+    return _reloadEngine(doc.name, bytes);
+  }
+
+  /// Creates a blank document with one artboard.
+  Future<bool> newDocument({String name = 'untitled'}) async {
+    final bytes = RivDocumentBuilder.newDocument();
+    final ok = await _openDocument(name, bytes);
+    if (ok) _filePath = null;
+    return ok;
+  }
+
+  /// Appends a new artboard to the document and selects it.
+  Future<bool> addArtboard(String name) async {
+    final doc = _document;
+    final editor = doc?.editor;
+    if (doc == null || editor == null) return false;
+
+    final before = editor.bytes();
+    RivDocumentBuilder.appendArtboard(editor.raw, name: name);
+    editor.rebuild();
+    _history.push(before);
+    _hasUnsavedChanges = true;
+    final ok = await _reloadEngine(doc.name, editor.bytes());
+    if (ok) {
+      final added = _document?.artboards
+          .where((a) => a.name == name)
+          .firstOrNull;
+      if (added != null) selectArtboard(added);
+    }
+    return ok;
+  }
+
+  /// Embeds an image asset into the document.
+  Future<bool> importImageAsset(String name, Uint8List assetBytes) async {
+    final doc = _document;
+    final editor = doc?.editor;
+    if (doc == null || editor == null) return false;
+
+    final before = editor.bytes();
+    RivDocumentBuilder.embedImageAsset(
+      editor.raw,
+      name: name,
+      bytes: assetBytes,
+      assetId: RivDocumentBuilder.nextAssetId(editor.raw),
+    );
+    editor.rebuild();
+    _history.push(before);
+    _hasUnsavedChanges = true;
+    return _reloadEngine(doc.name, editor.bytes());
+  }
+
+  /// Records where the document lives on disk (after open or save-as).
+  void setFilePath(String? path) {
+    _filePath = path;
+    notifyListeners();
   }
 
   /// Re-decodes [bytes] in the engine, preserving artboard/animation
@@ -210,8 +295,10 @@ class EditorState extends ChangeNotifier {
 
     _document?.dispose();
     _document = doc;
-    _undoStack.clear();
+    _filePath = null;
+    _history.clear();
     _hasUnsavedChanges = false;
+    _autosave.start(documentName: name, snapshotProvider: exportBytes);
     selectArtboard(doc.artboards.first);
     return true;
   }
@@ -265,6 +352,7 @@ class EditorState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _autosave.dispose();
     _document?.dispose();
     painter.dispose();
     super.dispose();
