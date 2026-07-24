@@ -3,18 +3,23 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../state/editor_state.dart';
 import 'editor_panel.dart';
+import 'keyframe_track_list.dart';
 
-/// Bottom timeline: transport controls, time ruler and a scrubber.
-///
-/// Keyframe tracks will live here as editing features grow.
+/// Bottom timeline: transport controls, time ruler with scrubbing, and
+/// keyframe tracks parsed from the `.riv` file.
 class TimelinePanel extends StatelessWidget {
   const TimelinePanel({super.key, required this.state});
 
   final EditorState state;
 
+  /// Width of the left gutter holding track names; the ruler and track
+  /// rows share it so keyframe diamonds line up with tick marks.
+  static const double labelGutterWidth = 160;
+
   @override
   Widget build(BuildContext context) {
     final animation = state.selectedAnimation;
+    final model = state.selectedAnimationModel;
     return EditorPanel(
       title: 'Timeline',
       actions: [
@@ -22,8 +27,8 @@ class TimelinePanel extends StatelessWidget {
           Text(
             '${state.currentTime.toStringAsFixed(2)}s / '
             '${state.duration.toStringAsFixed(2)}s',
-            style: const TextStyle(
-                fontSize: 11, color: EditorTheme.textSecondary),
+            style:
+                const TextStyle(fontSize: 11, color: EditorTheme.textSecondary),
           ),
       ],
       child: animation == null
@@ -38,7 +43,32 @@ class TimelinePanel extends StatelessWidget {
               children: [
                 _TransportBar(state: state),
                 const Divider(height: 1),
-                Expanded(child: _Scrubber(state: state)),
+                SizedBox(
+                  height: 26,
+                  child: Row(
+                    children: [
+                      const SizedBox(width: labelGutterWidth),
+                      Expanded(child: _ScrubberRuler(state: state)),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: model == null
+                      ? const Center(
+                          child: Text(
+                            'Keyframe data unavailable for this file',
+                            style: TextStyle(
+                              color: EditorTheme.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        )
+                      : KeyframeTrackList(
+                          animation: model,
+                          labelWidth: labelGutterWidth,
+                        ),
+                ),
               ],
             ),
     );
@@ -86,18 +116,15 @@ class _TransportBar extends StatelessWidget {
 }
 
 /// Time ruler with a draggable playhead.
-class _Scrubber extends StatelessWidget {
-  const _Scrubber({required this.state});
+class _ScrubberRuler extends StatelessWidget {
+  const _ScrubberRuler({required this.state});
 
   final EditorState state;
 
-  static const double _horizontalPadding = 12;
-
   void _seekFromPosition(BuildContext context, Offset localPosition) {
     final box = context.findRenderObject() as RenderBox;
-    final width = box.size.width - _horizontalPadding * 2;
-    if (width <= 0 || state.duration <= 0) return;
-    final t = ((localPosition.dx - _horizontalPadding) / width).clamp(0.0, 1.0);
+    if (box.size.width <= 0 || state.duration <= 0) return;
+    final t = (localPosition.dx / box.size.width).clamp(0.0, 1.0);
     state.seek(t * state.duration);
   }
 
@@ -108,14 +135,11 @@ class _Scrubber extends StatelessWidget {
       onTapDown: (d) => _seekFromPosition(context, d.localPosition),
       onHorizontalDragUpdate: (d) =>
           _seekFromPosition(context, d.localPosition),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: _TimelineRulerPainter(
-            duration: state.duration,
-            currentTime: state.currentTime,
-          ),
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _TimelineRulerPainter(
+          duration: state.duration,
+          currentTime: state.currentTime,
         ),
       ),
     );
@@ -130,13 +154,9 @@ class _TimelineRulerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final trackPaint = Paint()..color = EditorTheme.timelineTrack;
-    const rulerHeight = 22.0;
-
-    // Track background.
     canvas.drawRect(
-      Rect.fromLTWH(0, rulerHeight, size.width, size.height - rulerHeight),
-      trackPaint,
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()..color = EditorTheme.timelineTrack,
     );
 
     if (duration <= 0) return;
@@ -154,8 +174,8 @@ class _TimelineRulerPainter extends CustomPainter {
       final x = (t / duration) * size.width;
       final isMajor = (t / 0.5) % 1 < 1e-6 || (0.5 - (t % 0.5)).abs() < 1e-6;
       canvas.drawLine(
-        Offset(x, isMajor ? 4 : 12),
-        Offset(x, rulerHeight),
+        Offset(x, isMajor ? 6 : 14),
+        Offset(x, size.height),
         tickPaint,
       );
       if (isMajor) {
@@ -169,13 +189,12 @@ class _TimelineRulerPainter extends CustomPainter {
 
     // Playhead.
     final playheadX = (currentTime / duration) * size.width;
-    final playheadPaint = Paint()
-      ..color = EditorTheme.playhead
-      ..strokeWidth = 1.5;
     canvas.drawLine(
       Offset(playheadX, 0),
       Offset(playheadX, size.height),
-      playheadPaint,
+      Paint()
+        ..color = EditorTheme.playhead
+        ..strokeWidth = 1.5,
     );
     final headPath = Path()
       ..moveTo(playheadX - 5, 0)
