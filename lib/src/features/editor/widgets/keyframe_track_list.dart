@@ -12,9 +12,17 @@ class KeyframeTrackList extends StatelessWidget {
     super.key,
     required this.animation,
     required this.labelWidth,
+    this.selectedKeyedObject,
+    this.onSelectKeyedObject,
   });
 
   final RivAnimationModel animation;
+
+  /// Currently selected keyed object, highlighted in the list.
+  final RivKeyedObjectModel? selectedKeyedObject;
+
+  /// Invoked when a keyed-object header row is tapped.
+  final ValueChanged<RivKeyedObjectModel>? onSelectKeyedObject;
 
   /// Width reserved on the left for track names, so keyframe positions
   /// align with the shared time ruler above.
@@ -33,7 +41,11 @@ class KeyframeTrackList extends StatelessWidget {
     return ListView(
       children: [
         for (final keyedObject in animation.keyedObjects) ...[
-          _ObjectHeaderRow(name: keyedObject.objectName),
+          _ObjectHeaderRow(
+            name: keyedObject.objectName,
+            selected: identical(keyedObject, selectedKeyedObject),
+            onTap: () => onSelectKeyedObject?.call(keyedObject),
+          ),
           for (final property in keyedObject.properties)
             _PropertyTrackRow(
               property: property,
@@ -47,33 +59,44 @@ class KeyframeTrackList extends StatelessWidget {
 }
 
 class _ObjectHeaderRow extends StatelessWidget {
-  const _ObjectHeaderRow({required this.name});
+  const _ObjectHeaderRow({
+    required this.name,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String name;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 22,
-      color: EditorTheme.surfaceAlt,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.widgets_outlined,
-            size: 12,
-            color: EditorTheme.textSecondary,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            name,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: EditorTheme.textPrimary,
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        height: 22,
+        color: selected
+            ? EditorTheme.accent.withValues(alpha: 0.18)
+            : EditorTheme.surfaceAlt,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.widgets_outlined,
+              size: 12,
+              color: selected ? EditorTheme.accent : EditorTheme.textSecondary,
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Text(
+              name,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: EditorTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

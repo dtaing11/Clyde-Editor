@@ -4,11 +4,12 @@ import '../../core/theme/editor_theme.dart';
 import 'state/editor_state.dart';
 import 'widgets/editor_toolbar.dart';
 import 'widgets/hierarchy_panel.dart';
+import 'widgets/inspector_panel.dart';
 import 'widgets/timeline_panel.dart';
 import 'widgets/viewport_panel.dart';
 
-/// Main editor screen: toolbar on top, hierarchy on the left,
-/// viewport in the center and timeline docked at the bottom.
+/// Main editor screen: toolbar on top, hierarchy on the left, viewport
+/// in the center, inspector on the right and timeline docked below.
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
 
@@ -51,6 +52,11 @@ class _EditorScreenState extends State<EditorScreen> {
                     ),
                     const VerticalDivider(width: 1),
                     Expanded(child: ViewportPanel(state: _state)),
+                    const VerticalDivider(width: 1),
+                    SizedBox(
+                      width: EditorTheme.sidePanelWidth,
+                      child: InspectorPanel(state: _state),
+                    ),
                   ],
                 ),
               ),
