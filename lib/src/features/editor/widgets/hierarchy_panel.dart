@@ -19,7 +19,8 @@ class HierarchyPanel extends StatelessWidget {
           ? const Center(
               child: Text(
                 'No document',
-                style: TextStyle(color: EditorTheme.textSecondary, fontSize: 12),
+                style:
+                    TextStyle(color: EditorTheme.textSecondary, fontSize: 12),
               ),
             )
           : ListView(
@@ -76,7 +77,8 @@ class _HierarchyTile extends StatelessWidget {
           children: [
             Icon(icon,
                 size: 14,
-                color: selected ? EditorTheme.accent : EditorTheme.textSecondary),
+                color:
+                    selected ? EditorTheme.accent : EditorTheme.textSecondary),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -84,8 +86,9 @@ class _HierarchyTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
-                  color:
-                      selected ? EditorTheme.textPrimary : EditorTheme.textSecondary,
+                  color: selected
+                      ? EditorTheme.textPrimary
+                      : EditorTheme.textSecondary,
                 ),
               ),
             ),

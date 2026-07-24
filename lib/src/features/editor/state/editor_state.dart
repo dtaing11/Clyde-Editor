@@ -28,10 +28,10 @@ class EditorState extends ChangeNotifier {
   rive.Artboard? get activeArtboard => _activeArtboard;
   List<rive.Animation> get animations => _animations;
   int get selectedAnimationIndex => _selectedAnimationIndex;
-  rive.Animation? get selectedAnimation =>
-      _selectedAnimationIndex >= 0 && _selectedAnimationIndex < _animations.length
-          ? _animations[_selectedAnimationIndex]
-          : null;
+  rive.Animation? get selectedAnimation => _selectedAnimationIndex >= 0 &&
+          _selectedAnimationIndex < _animations.length
+      ? _animations[_selectedAnimationIndex]
+      : null;
   bool get isPlaying => _isPlaying;
   double get currentTime => _currentTime;
   double get duration => painter.duration;
