@@ -4,9 +4,12 @@ import '../../../core/theme/editor_theme.dart';
 import '../state/editor_state.dart';
 import 'editor_panel.dart';
 
-/// Left side panel listing artboards and their animations.
-class HierarchyPanel extends StatelessWidget {
-  const HierarchyPanel({super.key, required this.state});
+/// Lists artboards and their animations for playback selection.
+///
+/// Structural scene content lives in [SceneHierarchyPanel]; this panel
+/// is about *what plays* in the canvas and timeline.
+class AnimationsPanel extends StatelessWidget {
+  const AnimationsPanel({super.key, required this.state});
 
   final EditorState state;
 
@@ -14,7 +17,7 @@ class HierarchyPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final doc = state.document;
     return EditorPanel(
-      title: 'Hierarchy',
+      title: 'Animations',
       child: doc == null
           ? const Center(
               child: Text(
@@ -29,7 +32,7 @@ class HierarchyPanel extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 4),
               children: [
                 for (final artboard in doc.artboards) ...[
-                  _HierarchyTile(
+                  _AnimationsTile(
                     icon: Icons.crop_square,
                     label: artboard.name,
                     depth: 0,
@@ -38,7 +41,7 @@ class HierarchyPanel extends StatelessWidget {
                   ),
                   if (identical(artboard, state.activeArtboard))
                     for (var i = 0; i < state.animations.length; i++)
-                      _HierarchyTile(
+                      _AnimationsTile(
                         icon: Icons.play_circle_outline,
                         label: state.animations[i].name,
                         depth: 1,
@@ -52,8 +55,8 @@ class HierarchyPanel extends StatelessWidget {
   }
 }
 
-class _HierarchyTile extends StatelessWidget {
-  const _HierarchyTile({
+class _AnimationsTile extends StatelessWidget {
+  const _AnimationsTile({
     required this.icon,
     required this.label,
     required this.depth,

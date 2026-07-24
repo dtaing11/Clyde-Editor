@@ -4,13 +4,14 @@ import 'package:integration_test/integration_test.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
 import 'package:rive_editor/src/app.dart';
-import 'package:rive_editor/src/features/editor/widgets/hierarchy_panel.dart';
+import 'package:rive_editor/src/features/editor/widgets/animations_panel.dart';
+import 'package:rive_editor/src/features/editor/widgets/canvas_panel.dart';
+import 'package:rive_editor/src/features/editor/widgets/scene_hierarchy_panel.dart';
 import 'package:rive_editor/src/features/editor/widgets/timeline_panel.dart';
-import 'package:rive_editor/src/features/editor/widgets/viewport_panel.dart';
 
 /// End-to-end check on the real macOS runner: the editor boots, the native
-/// Rive engine initializes, the demo document loads, and all three panels
-/// plus a rendered artboard are present.
+/// Rive engine initializes, the demo document loads, and all panels plus a
+/// rendered artboard are present.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -27,8 +28,9 @@ void main() {
     }
 
     // Editor chrome is present.
-    expect(find.byType(HierarchyPanel), findsOneWidget);
-    expect(find.byType(ViewportPanel), findsOneWidget);
+    expect(find.byType(SceneHierarchyPanel), findsOneWidget);
+    expect(find.byType(AnimationsPanel), findsOneWidget);
+    expect(find.byType(CanvasPanel), findsOneWidget);
     expect(find.byType(TimelinePanel), findsOneWidget);
 
     // Demo document decoded and artboard is rendered by the Rive engine.

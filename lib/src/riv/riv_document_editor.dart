@@ -16,6 +16,11 @@ class RivDocumentEditor {
 
   final RivRawDocument _raw;
 
+  /// The underlying lossless document. Structural editors
+  /// ([RivArtboardEditor], builders) operate on this and then call
+  /// [rebuild] to refresh the display model.
+  RivRawDocument get raw => _raw;
+
   /// Display model matching the current state of the document.
   RivDocumentModel model;
 
@@ -86,6 +91,11 @@ class RivDocumentEditor {
     return true;
   }
 
+  /// Rebuilds the display model after direct mutations of [raw].
+  void rebuild() {
+    model = RivParser.fromRaw(_raw);
+  }
+
   RivRawObject? _rawKeyFrameObject(RivKeyFrameModel keyframe) {
     final index = keyframe.rawObjectIndex;
     if (index < 0 || index >= _raw.objects.length) return null;
@@ -101,7 +111,5 @@ class RivDocumentEditor {
     return keyFrameTypes.contains(object.typeKey) ? object : null;
   }
 
-  void _rebuild() {
-    model = RivParser.fromRaw(_raw);
-  }
+  void _rebuild() => rebuild();
 }

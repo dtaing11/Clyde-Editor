@@ -1,57 +1,94 @@
-import 'dart:io';
-
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/editor_theme.dart';
+import '../services/file_service.dart';
 import '../state/editor_state.dart';
 
-/// Top application toolbar: file actions and document info.
+/// Top application toolbar: file lifecycle actions, edit history, and
+/// document status.
+///
+/// All disk access goes through [FileService]; this widget only
+/// orchestrates dialogs and reports outcomes.
 class EditorToolbar extends StatelessWidget {
-  const EditorToolbar({super.key, required this.state});
+  const EditorToolbar({super.key, required this.state, required this.files});
 
   final EditorState state;
+  final FileService files;
+
+  Future<void> _newDocument(BuildContext context) async {
+    final ok = await state.newDocument();
+    if (!ok && context.mounted) {
+      _showMessage(context, 'Could not create document');
+    }
+  }
 
   Future<void> _openFile(BuildContext context) async {
-    const typeGroup = XTypeGroup(label: 'Rive files', extensions: ['riv']);
-    final file = await openFile(acceptedTypeGroups: [typeGroup]);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    final name = file.name.replaceAll('.riv', '');
-    final ok = await state.loadFromBytes(name, bytes);
-    if (!ok && context.mounted) {
+    final picked = await files.openRiveFile();
+    if (picked.result != FileOpResult.success) {
+      if (picked.result == FileOpResult.failed && context.mounted) {
+        _showMessage(context, 'Could not read file');
+      }
+      return;
+    }
+    final ok = await state.loadFromBytes(picked.name!, picked.bytes!);
+    if (ok) {
+      state.setFilePath(picked.path);
+    } else if (context.mounted) {
       _showMessage(context, 'Could not open Rive file');
     }
   }
 
-  Future<void> _saveFile(BuildContext context) async {
+  Future<void> _save(BuildContext context) async {
+    final path = state.filePath;
+    if (path == null) return _saveAs(context);
+
+    final bytes = state.exportBytes();
+    if (bytes == null) return;
+    final result = await files.writeTo(path, bytes);
+    if (result == FileOpResult.success) {
+      state.markSaved();
+      if (context.mounted) _showMessage(context, 'Saved');
+    } else if (context.mounted) {
+      _showMessage(context, 'Save failed');
+    }
+  }
+
+  Future<void> _saveAs(BuildContext context) async {
     final bytes = state.exportBytes();
     final doc = state.document;
     if (bytes == null || doc == null) return;
 
-    final location = await getSaveLocation(
-      suggestedName: '${doc.name}.riv',
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'Rive files', extensions: ['riv']),
-      ],
-    );
-    if (location == null) return;
-
-    try {
-      await File(location.path).writeAsBytes(bytes, flush: true);
-      state.markSaved();
-      if (context.mounted) {
-        _showMessage(context, 'Saved ${location.path.split('/').last}');
-      }
-    } on FileSystemException catch (e) {
-      if (context.mounted) _showMessage(context, 'Save failed: ${e.message}');
+    final saved = await files.saveAs(bytes, suggestedName: '${doc.name}.riv');
+    if (saved.result == FileOpResult.success) {
+      state
+        ..setFilePath(saved.path)
+        ..markSaved();
+      if (context.mounted) _showMessage(context, 'Saved');
+    } else if (saved.result == FileOpResult.failed && context.mounted) {
+      _showMessage(context, 'Save failed');
     }
   }
 
+  Future<void> _importImage(BuildContext context) async {
+    final picked = await files.pickImageAsset();
+    if (picked.result != FileOpResult.success) return;
+    final ok = await state.importImageAsset(picked.name!, picked.bytes!);
+    if (context.mounted) {
+      _showMessage(context, ok ? 'Imported ${picked.name}' : 'Import failed');
+    }
+  }
+
+  Future<void> _addArtboard(BuildContext context) async {
+    final existing = state.document?.artboards.length ?? 0;
+    await state.addArtboard('Artboard ${existing + 1}');
+  }
+
   void _showMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+      );
   }
 
   @override
@@ -79,59 +116,166 @@ class EditorToolbar extends StatelessWidget {
             'Clyde Editor',
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           ),
-          const SizedBox(width: 16),
-          _ToolbarButton(
-            icon: Icons.folder_open,
-            label: 'Open',
-            onPressed: () => _openFile(context),
+          const SizedBox(width: 12),
+          _FileMenu(
+            enabledSave: state.canEdit,
+            onNew: () => _newDocument(context),
+            onOpen: () => _openFile(context),
+            onSave: () => _save(context),
+            onSaveAs: () => _saveAs(context),
+            onImportImage: () => _importImage(context),
+            onAddArtboard: state.canEdit ? () => _addArtboard(context) : null,
           ),
-          _ToolbarButton(
-            icon: Icons.save_outlined,
-            label: 'Save',
-            onPressed: state.canEdit ? () => _saveFile(context) : null,
+          const SizedBox(width: 4),
+          _IconAction(
+            icon: Icons.undo,
+            tooltip: 'Undo (Cmd/Ctrl+Z)',
+            onPressed: state.canUndo ? state.undo : null,
+          ),
+          _IconAction(
+            icon: Icons.redo,
+            tooltip: 'Redo (Cmd/Ctrl+Shift+Z)',
+            onPressed: state.canRedo ? state.redo : null,
           ),
           const Spacer(),
-          if (state.document != null)
-            Text(
-              '${state.document!.name}.riv'
-              '${state.hasUnsavedChanges ? ' •' : ''}',
-              style: TextStyle(
-                fontSize: 12,
-                color: state.hasUnsavedChanges
-                    ? EditorTheme.accent
-                    : EditorTheme.textSecondary,
-              ),
-            ),
+          _DocumentStatus(state: state),
         ],
       ),
     );
   }
 }
 
-class _ToolbarButton extends StatelessWidget {
-  const _ToolbarButton({
+/// "File" dropdown grouping the document lifecycle actions.
+class _FileMenu extends StatelessWidget {
+  const _FileMenu({
+    required this.enabledSave,
+    required this.onNew,
+    required this.onOpen,
+    required this.onSave,
+    required this.onSaveAs,
+    required this.onImportImage,
+    required this.onAddArtboard,
+  });
+
+  final bool enabledSave;
+  final VoidCallback onNew;
+  final VoidCallback onOpen;
+  final VoidCallback onSave;
+  final VoidCallback onSaveAs;
+  final VoidCallback onImportImage;
+  final VoidCallback? onAddArtboard;
+
+  @override
+  Widget build(BuildContext context) {
+    return MenuAnchor(
+      builder: (context, controller, _) => TextButton.icon(
+        onPressed: () =>
+            controller.isOpen ? controller.close() : controller.open(),
+        icon: const Icon(Icons.description_outlined, size: 16),
+        label: const Text('File', style: TextStyle(fontSize: 12)),
+        style: TextButton.styleFrom(
+          foregroundColor: EditorTheme.textPrimary,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+      ),
+      menuChildren: [
+        _menuItem('New', 'Cmd/Ctrl+N', onNew),
+        _menuItem('Open…', 'Cmd/Ctrl+O', onOpen),
+        const Divider(height: 1),
+        _menuItem('Save', 'Cmd/Ctrl+S', enabledSave ? onSave : null),
+        _menuItem(
+          'Save As…',
+          'Shift+Cmd/Ctrl+S',
+          enabledSave ? onSaveAs : null,
+        ),
+        const Divider(height: 1),
+        _menuItem('Import Image…', null, enabledSave ? onImportImage : null),
+        _menuItem('Add Artboard', null, onAddArtboard),
+      ],
+    );
+  }
+
+  MenuItemButton _menuItem(
+    String label,
+    String? shortcut,
+    VoidCallback? onPressed,
+  ) {
+    return MenuItemButton(
+      onPressed: onPressed,
+      trailingIcon: shortcut == null
+          ? null
+          : Text(
+              shortcut,
+              style: const TextStyle(
+                fontSize: 10,
+                color: EditorTheme.textSecondary,
+              ),
+            ),
+      child: Text(label, style: const TextStyle(fontSize: 12)),
+    );
+  }
+}
+
+class _IconAction extends StatelessWidget {
+  const _IconAction({
     required this.icon,
-    required this.label,
+    required this.tooltip,
     required this.onPressed,
   });
 
   final IconData icon;
-  final String label;
+  final String tooltip;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return TextButton.icon(
+    return IconButton(
+      iconSize: 17,
+      visualDensity: VisualDensity.compact,
+      tooltip: tooltip,
+      icon: Icon(icon),
       onPressed: onPressed,
-      icon: Icon(icon, size: 16),
-      label: Text(label, style: const TextStyle(fontSize: 12)),
-      style: TextButton.styleFrom(
-        foregroundColor: EditorTheme.textPrimary,
-        disabledForegroundColor: EditorTheme.textSecondary.withValues(
-          alpha: 0.5,
+    );
+  }
+}
+
+/// Right-aligned file name, dirty dot, and autosave time.
+class _DocumentStatus extends StatelessWidget {
+  const _DocumentStatus({required this.state});
+
+  final EditorState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final doc = state.document;
+    if (doc == null) return const SizedBox.shrink();
+
+    final autosave = state.lastAutosaveTime;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (autosave != null) ...[
+          Text(
+            'autosaved '
+            '${autosave.hour.toString().padLeft(2, '0')}:'
+            '${autosave.minute.toString().padLeft(2, '0')}',
+            style: TextStyle(
+              fontSize: 10,
+              color: EditorTheme.textSecondary.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(width: 10),
+        ],
+        Text(
+          '${doc.name}.riv${state.hasUnsavedChanges ? ' •' : ''}',
+          style: TextStyle(
+            fontSize: 12,
+            color: state.hasUnsavedChanges
+                ? EditorTheme.accent
+                : EditorTheme.textSecondary,
+          ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-      ),
+      ],
     );
   }
 }

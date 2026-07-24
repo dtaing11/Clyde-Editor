@@ -5,16 +5,32 @@
 /// See `include/rive/generated/**` in the rive-runtime repository.
 abstract final class RivTypeKeys {
   static const int artboard = 1;
+  static const int node = 2;
+  static const int shape = 3;
+  static const int ellipse = 4;
+  static const int rectangle = 7;
+  static const int solidColor = 18;
+  static const int fill = 20;
   static const int backboard = 23;
+  static const int stroke = 24;
   static const int keyedObject = 25;
   static const int keyedProperty = 26;
   static const int keyFrameDouble = 30;
   static const int linearAnimation = 31;
   static const int keyFrameColor = 37;
+  static const int bone = 40;
+  static const int rootBone = 41;
   static const int keyFrameId = 50;
   static const int stateMachine = 53;
   static const int keyFrameBool = 84;
+  static const int asset = 99;
+  static const int fileAsset = 103;
+  static const int imageAsset = 105;
+  static const int fileAssetContents = 106;
+  static const int text = 134;
+  static const int fontAsset = 141;
   static const int keyFrameString = 142;
+  static const int audioAsset = 406;
   static const int keyFrameUint = 450;
 
   /// Type keys that belong to the animation/state machine subsystem.
@@ -44,6 +60,14 @@ abstract final class RivPropertyKeys {
   static const int componentName = 4;
   static const int componentParentId = 5;
 
+  // LayoutComponent (Artboard extends it)
+  static const int layoutWidth = 7;
+  static const int layoutHeight = 8;
+
+  // Node
+  static const int nodeX = 13;
+  static const int nodeY = 14;
+
   // Animation / LinearAnimation
   static const int animationName = 55;
   static const int animationFps = 56;
@@ -56,6 +80,11 @@ abstract final class RivPropertyKeys {
   static const int keyFrameInterpolationType = 68;
   static const int keyFrameInterpolatorId = 69;
   static const int keyFrameDoubleValue = 70;
+
+  // Assets
+  static const int assetName = 203;
+  static const int assetId = 204;
+  static const int assetBytes = 212;
 }
 
 /// Serialized field categories used by the `.riv` property table of
