@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../riv/riv_document_model.dart';
 import '../painting/timeline_animation_painter.dart';
 import 'editor_document.dart';
 
@@ -36,6 +37,15 @@ class EditorState extends ChangeNotifier {
   double get currentTime => _currentTime;
   double get duration => painter.duration;
   bool get hasDocument => _document != null;
+
+  /// Parsed keyframe tracks for the selected animation, or `null` when
+  /// unavailable (no selection, or the file could not be parsed).
+  RivAnimationModel? get selectedAnimationModel {
+    final artboard = _activeArtboard;
+    final animation = selectedAnimation;
+    if (artboard == null || animation == null) return null;
+    return _document?.animationModel(artboard.name, animation.name);
+  }
 
   /// Loads a document from a Flutter asset bundle path.
   Future<bool> loadFromAsset(String assetPath) async {

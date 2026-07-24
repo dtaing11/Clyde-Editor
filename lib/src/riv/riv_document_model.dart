@@ -48,13 +48,19 @@ class RivAnimationModel {
 
 /// All keyed properties for one animated component.
 class RivKeyedObjectModel {
-  RivKeyedObjectModel({required this.objectId, required this.objectName});
+  RivKeyedObjectModel({required this.objectId, required String objectName})
+      : _objectName = objectName; // ignore: prefer_initializing_formals
 
   /// Index of the animated component in the artboard object list.
   final int objectId;
 
+  String _objectName;
+
   /// Resolved display name (component name or a fallback).
-  final String objectName;
+  String get objectName => _objectName;
+
+  /// Called by the parser once component names are known.
+  void resolveName(String name) => _objectName = name;
 
   final List<RivKeyedPropertyModel> properties = [];
 }

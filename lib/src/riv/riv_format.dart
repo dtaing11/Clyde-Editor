@@ -31,6 +31,11 @@ abstract final class RivTypeKeys {
     505, 527, 528, 593, 601, 602, 614, 615, 630, 646, 647, 652, 654, 667,
     671, 672, 1037, 1038,
   };
+
+  /// Interpolator type keys. Although they live in the animation
+  /// subsystem, the runtime imports them as artboard components
+  /// (see `keyframe_interpolator.cpp`), so they consume object indices.
+  static const Set<int> interpolatorTypeKeys = {28, 138, 139, 163, 174, 175};
 }
 
 /// Property keys the parser reads explicitly.
