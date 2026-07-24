@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/editor_theme.dart';
+import '../../core/tools/editor_tool.dart';
+import '../../core/tools/tool_controller.dart';
 import 'services/file_service.dart';
 import 'state/editor_state.dart';
+import 'tools/core_tools.dart';
 import 'widgets/canvas_panel.dart';
 import 'widgets/editor_toolbar.dart';
 import 'widgets/animations_panel.dart';
 import 'widgets/inspector_panel.dart';
 import 'widgets/scene_hierarchy_panel.dart';
 import 'widgets/timeline_panel.dart';
+import 'widgets/tool_strip.dart';
 
 /// Main editor screen.
 ///
@@ -25,18 +29,27 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   late final EditorState _state;
+  late final ToolController _toolController;
   final FileService _files = FileService();
 
   @override
   void initState() {
     super.initState();
     _state = EditorState();
+    _toolController = ToolController(
+      registry: ToolRegistry()
+        ..register(SelectionTool())
+        ..register(HandTool())
+        ..register(const ZoomTool()),
+      initialToolId: SelectionTool.toolId,
+    );
     // Load a bundled demo so the editor is never empty on first launch.
     _state.loadFromAsset('assets/demo/little_machine.riv');
   }
 
   @override
   void dispose() {
+    _toolController.dispose();
     _state.dispose();
     super.dispose();
   }
@@ -53,6 +66,11 @@ class _EditorScreenState extends State<EditorScreen> {
     const SingleActivator(LogicalKeyboardKey.keyN, control: true): () =>
         _state.newDocument(),
     const SingleActivator(LogicalKeyboardKey.space): _state.togglePlay,
+    // Tool shortcuts resolve through the registry, not hard-coded ids.
+    const SingleActivator(LogicalKeyboardKey.keyV): () =>
+        _toolController.activateByShortcut(LogicalKeyboardKey.keyV),
+    const SingleActivator(LogicalKeyboardKey.keyH): () =>
+        _toolController.activateByShortcut(LogicalKeyboardKey.keyH),
   };
 
   @override
@@ -87,7 +105,13 @@ class _EditorScreenState extends State<EditorScreen> {
                           ),
                         ),
                         const VerticalDivider(width: 1),
-                        Expanded(child: CanvasPanel(state: _state)),
+                        ToolStrip(controller: _toolController),
+                        Expanded(
+                          child: CanvasPanel(
+                            state: _state,
+                            toolController: _toolController,
+                          ),
+                        ),
                         const VerticalDivider(width: 1),
                         SizedBox(
                           width: EditorTheme.sidePanelWidth,
