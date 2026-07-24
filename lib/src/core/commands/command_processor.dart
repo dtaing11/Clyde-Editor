@@ -10,6 +10,7 @@ import 'editor_command.dart';
 /// - History depth is bounded so long sessions do not grow unboundedly.
 final class CommandProcessor {
   CommandProcessor({required DocumentContext context, this.maxDepth = 100})
+    // ignore: prefer_initializing_formals
     : _context = context;
 
   final DocumentContext _context;
