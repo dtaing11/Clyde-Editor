@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/services.dart';
 
+import '../commands/editor_command.dart';
 import '../services/view_transform.dart';
 
 /// Everything a tool may read or request during interaction.
@@ -17,6 +18,12 @@ abstract interface class ToolContext {
 
   /// Requests an overlay repaint (marquee rectangles, previews).
   void requestOverlayRepaint();
+
+  /// Ordinal of the artboard currently shown, or -1 when none.
+  int get activeArtboardOrdinal;
+
+  /// Dispatches a document mutation through the command system (§4.4).
+  void dispatch(EditorCommand command);
 }
 
 /// A pointer event delivered to a tool, in both coordinate spaces.

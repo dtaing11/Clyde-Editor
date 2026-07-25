@@ -4,6 +4,11 @@ import 'package:integration_test/integration_test.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
 import 'package:rive_editor/src/app.dart';
+import 'package:rive_editor/src/core/commands/editor_command.dart';
+import 'package:rive_editor/src/core/commands/shape_commands.dart';
+import 'package:rive_editor/src/riv/riv_document_builder.dart';
+import 'package:rive_editor/src/riv/riv_document_editor.dart';
+import 'package:rive_editor/src/riv/riv_shape_factory.dart';
 import 'package:rive_editor/src/features/editor/widgets/animations_panel.dart';
 import 'package:rive_editor/src/features/editor/widgets/canvas_panel.dart';
 import 'package:rive_editor/src/features/editor/widgets/scene_hierarchy_panel.dart';
@@ -43,4 +48,48 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byIcon(Icons.pause), findsOneWidget);
   });
+
+  testWidgets('shape command output decodes in the native engine', (
+    tester,
+  ) async {
+    await rive.RiveNative.init();
+
+    // Build a blank document, add a rectangle via the command, and
+    // prove the shipping engine accepts and renders the result.
+    final bytes = RivDocumentBuilder.newDocument();
+    final editor = RivDocumentEditor.parse(bytes);
+    final context = _EngineTestContext(editor);
+    final command = AddShapeCommand(
+      artboardOrdinal: 0,
+      kind: RivShapeKind.rectangle,
+      name: 'EngineRect',
+      x: 250,
+      y: 250,
+      width: 100,
+      height: 80,
+    );
+    expect(command.execute(context).succeeded, isTrue);
+
+    final file = await rive.File.decode(
+      editor.bytes(),
+      riveFactory: rive.Factory.rive,
+    );
+    expect(file, isNotNull, reason: 'engine must accept edited bytes');
+    final artboard = file!.artboardAt(0);
+    expect(artboard, isNotNull);
+    final component = artboard!.component('EngineRect');
+    expect(component, isNotNull, reason: 'shape must exist in the engine');
+    artboard.dispose();
+    file.dispose();
+  });
+}
+
+final class _EngineTestContext implements DocumentContext {
+  _EngineTestContext(this.editor);
+
+  @override
+  final RivDocumentEditor editor;
+
+  @override
+  void reportComponentRemap(int artboardOrdinal, Map<int, int> remap) {}
 }

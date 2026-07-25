@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../core/commands/editor_command.dart';
 import '../../../core/services/view_transform.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../core/tools/editor_tool.dart';
@@ -68,6 +69,14 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
   @override
   void requestOverlayRepaint() {
     _overlayEpoch.value++;
+  }
+
+  @override
+  int get activeArtboardOrdinal => widget.state.activeArtboardOrdinal;
+
+  @override
+  void dispatch(EditorCommand command) {
+    widget.state.dispatch(command);
   }
 
   // -- Interaction ---------------------------------------------------------

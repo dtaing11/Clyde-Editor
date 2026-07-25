@@ -85,6 +85,9 @@ abstract final class RivPropertyKeys {
   static const int assetName = 203;
   static const int assetId = 204;
   static const int assetBytes = 212;
+
+  // Paint
+  static const int solidColorValue = 37;
 }
 
 /// Serialized field categories used by the `.riv` property table of
