@@ -36,6 +36,7 @@ AddShapeCommand _rectangleCommand() => AddShapeCommand(
 );
 
 void main() {
+  _polygonAndTextTests();
   group('RivShapeFactory', () {
     test('rectangle recipe re-parses with exact objects and values', () {
       final raw = RivRawDocument.parse(_blankDocument());
@@ -202,6 +203,135 @@ void main() {
       );
       final result = command.execute(context);
       expect(result.succeeded, isFalse);
+    });
+  });
+}
+
+// -- Polygon and text ------------------------------------------------------
+
+void _polygonAndTextTests() {
+  group('polygon', () {
+    test('recipe re-parses with points property', () {
+      final raw = RivRawDocument.parse(_blankDocument());
+      RivShapeFactory.addShape(
+        raw,
+        artboardOrdinal: 0,
+        kind: RivShapeKind.polygon,
+        name: 'Penta',
+        x: 50,
+        y: 50,
+        width: 80,
+        height: 80,
+        color: 0xFF00FF00,
+        polygonPoints: 6,
+      );
+      final reparsed = RivRawDocument.parse(raw.serialize());
+      final polygon = reparsed.objects.firstWhere(
+        (o) => o.typeKey == RivTypeKeys.polygon,
+      );
+      expect(polygon.property(RivPropertyKeys.polygonPoints)!.uintValue, 6);
+    });
+
+    test('AddShapeCommand supports polygon kind with undo byte-identity', () {
+      final context = _TestContext(_blankDocument());
+      final original = context.editor.bytes();
+      final command = AddShapeCommand(
+        artboardOrdinal: 0,
+        kind: RivShapeKind.polygon,
+        name: 'P',
+        x: 10,
+        y: 10,
+        width: 40,
+        height: 40,
+      );
+      expect(command.execute(context).succeeded, isTrue);
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.bytes(), original);
+    });
+  });
+
+  group('text', () {
+    Uint8List fakeFont() => Uint8List.fromList(List.filled(64, 7));
+
+    test('recipe embeds font asset and builds the text tree', () {
+      final raw = RivRawDocument.parse(_blankDocument());
+      final added = RivShapeFactory.addText(
+        raw,
+        artboardOrdinal: 0,
+        name: 'Title',
+        text: 'Hello',
+        x: 100,
+        y: 60,
+        fontSize: 24,
+        color: 0xFFFFFFFF,
+        fontBytes: fakeFont(),
+        fontName: 'TestFont',
+      );
+      expect(added, isTrue);
+
+      final reparsed = RivRawDocument.parse(raw.serialize());
+      final types = reparsed.objects.map((o) => o.typeKey).toList();
+      expect(types, contains(RivTypeKeys.fontAsset));
+      expect(types, contains(RivTypeKeys.fileAssetContents));
+      expect(types, contains(RivTypeKeys.text));
+      expect(types, contains(RivTypeKeys.textStylePaint));
+      expect(types, contains(RivTypeKeys.textValueRun));
+
+      final run = reparsed.objects.firstWhere(
+        (o) => o.typeKey == RivTypeKeys.textValueRun,
+      );
+      final style = reparsed.objects.firstWhere(
+        (o) => o.typeKey == RivTypeKeys.textStylePaint,
+      );
+      expect(style.property(RivPropertyKeys.textStyleFontSize)!.floatValue, 24);
+      // The run must reference the style's component index.
+      expect(
+        run.property(RivPropertyKeys.textRunStyleId)!.uintValue,
+        greaterThan(0),
+      );
+    });
+
+    test('same font embeds once across two text objects', () {
+      final raw = RivRawDocument.parse(_blankDocument());
+      for (var i = 0; i < 2; i++) {
+        RivShapeFactory.addText(
+          raw,
+          artboardOrdinal: 0,
+          name: 'T$i',
+          text: 'x',
+          x: 0,
+          y: 0,
+          fontSize: 12,
+          color: 0xFF000000,
+          fontBytes: fakeFont(),
+          fontName: 'TestFont',
+        );
+      }
+      final fontAssets = raw.objects
+          .where((o) => o.typeKey == RivTypeKeys.fontAsset)
+          .length;
+      expect(fontAssets, 1, reason: 'font must be deduplicated by name');
+    });
+
+    test('AddTextCommand undo byte-identity and serialisation', () {
+      final context = _TestContext(_blankDocument());
+      final original = context.editor.bytes();
+      final command = AddTextCommand(
+        artboardOrdinal: 0,
+        name: 'T',
+        text: 'Hi',
+        x: 5,
+        y: 5,
+        fontBytes: fakeFont(),
+        fontName: 'TestFont',
+      );
+      expect(command.execute(context).succeeded, isTrue);
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.bytes(), original);
+
+      final decoded = EditorCommandCodec.instance.decode(command.toJson());
+      expect(decoded.toJson(), command.toJson());
+      expect(decoded.execute(context).succeeded, isTrue);
     });
   });
 }

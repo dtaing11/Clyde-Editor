@@ -227,10 +227,10 @@ abstract final class RivShapeFactory {
     final backboardIndex = document.objects.indexWhere(
       (o) => o.typeKey == RivTypeKeys.backboard,
     );
-    document.objects.insertAll(
-      backboardIndex >= 0 ? backboardIndex + 1 : 0,
-      [asset, contents],
-    );
+    document.objects.insertAll(backboardIndex >= 0 ? backboardIndex + 1 : 0, [
+      asset,
+      contents,
+    ]);
     return assetId;
   }
 

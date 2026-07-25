@@ -154,7 +154,6 @@ final class EllipseTool extends ShapeCreationTool {
   }
 }
 
-
 /// Drag-to-create regular polygons (pentagon by default).
 final class PolygonTool extends ShapeCreationTool {
   PolygonTool();
@@ -184,7 +183,9 @@ final class PolygonTool extends ShapeCreationTool {
         center.dx + math.cos(angle) * rect.width / 2,
         center.dy + math.sin(angle) * rect.height / 2,
       );
-      i == 0 ? path.moveTo(vertex.dx, vertex.dy) : path.lineTo(vertex.dx, vertex.dy);
+      i == 0
+          ? path.moveTo(vertex.dx, vertex.dy)
+          : path.lineTo(vertex.dx, vertex.dy);
     }
     canvas.drawPath(path, paint);
   }

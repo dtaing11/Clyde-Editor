@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
 import '../../../core/commands/command_processor.dart';
@@ -466,11 +467,29 @@ class EditorState extends ChangeNotifier implements DocumentContext {
       // Non-looping animation reached its end.
       _isPlaying = false;
     }
-    notifyListeners();
+    _notifyAfterFrame();
+  }
+
+  bool _notifyScheduled = false;
+  bool _disposed = false;
+
+  /// Coalesces notifications that originate inside the paint phase
+  /// (the painter advances during paint) to the end of the frame:
+  /// notifying mid-paint schedules builds during the frame, which the
+  /// framework forbids. The dispose guard covers callbacks landing
+  /// after teardown (e.g. test shutdown mid-frame).
+  void _notifyAfterFrame() {
+    if (_notifyScheduled || _disposed) return;
+    _notifyScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notifyScheduled = false;
+      if (!_disposed) notifyListeners();
+    });
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _autosave.dispose();
     scene.dispose();
     selection.dispose();
