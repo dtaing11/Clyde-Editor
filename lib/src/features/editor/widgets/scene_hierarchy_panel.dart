@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../../core/services/selection_service.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../riv/riv_hierarchy.dart';
 import '../state/editor_state.dart';
@@ -18,7 +20,7 @@ class SceneHierarchyPanel extends StatelessWidget {
     return EditorPanel(
       title: 'Scene',
       child: ListenableBuilder(
-        listenable: state.scene,
+        listenable: Listenable.merge([state.scene, state.selection]),
         builder: (context, _) {
           final trees = state.hierarchyTrees;
           return Column(
@@ -286,7 +288,7 @@ class _NodeRowState extends State<_NodeRow> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = _scene.selected == widget.nodeRef;
+    final selected = widget.state.selection.contains(widget.nodeRef);
     final hidden = widget.state.isComponentHidden(widget.nodeRef);
 
     final row = _RowContent(
@@ -306,7 +308,13 @@ class _NodeRowState extends State<_NodeRow> {
 
     final interactive = GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _scene.select(widget.nodeRef),
+      onTap: () {
+        final hardware = HardwareKeyboard.instance;
+        final toggle = hardware.isMetaPressed || hardware.isControlPressed;
+        widget.state.selection.select([
+          widget.nodeRef,
+        ], mode: toggle ? SelectionMode.toggle : SelectionMode.replace);
+      },
       onDoubleTap: _isArtboardRoot || _locked ? null : _showRenameDialog,
       onSecondaryTapUp: _isArtboardRoot
           ? null

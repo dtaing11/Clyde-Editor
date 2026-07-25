@@ -6,8 +6,12 @@ import '../../../riv/riv_keyframe_evaluator.dart';
 import '../state/editor_state.dart';
 import 'editor_panel.dart';
 
-/// Right-side inspector: shows the selected keyed object's animated
-/// properties with their values evaluated at the current playhead time.
+/// Right-side inspector: shows the primary selected component and, when
+/// it is animated in the current animation, its property values
+/// evaluated at the playhead.
+///
+/// Selection comes from the shared `SelectionService` (§2.2); the
+/// timeline's keyed-object clicks route through the same service.
 class InspectorPanel extends StatelessWidget {
   const InspectorPanel({super.key, required this.state});
 
@@ -15,17 +19,24 @@ class InspectorPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final keyedObject = state.selectedKeyedObject;
-    final animationModel = state.selectedAnimationModel;
     return EditorPanel(
       title: 'Inspector',
-      child: keyedObject == null || animationModel == null
-          ? const _EmptyInspector()
-          : _ObjectInspector(
-              keyedObject: keyedObject,
-              animation: animationModel,
-              currentTime: state.currentTime,
-            ),
+      child: ListenableBuilder(
+        listenable: state.selection,
+        builder: (context, _) {
+          final keyedObject = state.selectedKeyedObject;
+          final animationModel = state.selectedAnimationModel;
+          if (keyedObject == null || animationModel == null) {
+            return const _EmptyInspector();
+          }
+          return _ObjectInspector(
+            keyedObject: keyedObject,
+            animation: animationModel,
+            currentTime: state.currentTime,
+            selectionCount: state.selection.count,
+          );
+        },
+      ),
     );
   }
 }
@@ -39,7 +50,7 @@ class _EmptyInspector extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(16),
         child: Text(
-          'Select an object in the timeline\nto inspect its animated values',
+          'Select an object in the scene or timeline\nto inspect it',
           textAlign: TextAlign.center,
           style: TextStyle(color: EditorTheme.textSecondary, fontSize: 12),
         ),
@@ -53,11 +64,13 @@ class _ObjectInspector extends StatelessWidget {
     required this.keyedObject,
     required this.animation,
     required this.currentTime,
+    required this.selectionCount,
   });
 
   final RivKeyedObjectModel keyedObject;
   final RivAnimationModel animation;
   final double currentTime;
+  final int selectionCount;
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +79,9 @@ class _ObjectInspector extends StatelessWidget {
       children: [
         _SectionHeader(
           icon: Icons.widgets_outlined,
-          title: keyedObject.objectName,
+          title: selectionCount > 1
+              ? '${keyedObject.objectName}  (+${selectionCount - 1} more)'
+              : keyedObject.objectName,
         ),
         const SizedBox(height: 4),
         _InfoRow(label: 'Object index', value: '${keyedObject.objectId}'),
