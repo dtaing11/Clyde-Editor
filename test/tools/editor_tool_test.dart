@@ -1,7 +1,10 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rive_editor/src/core/commands/editor_command.dart';
+import 'package:rive_editor/src/core/model/scene_node_ref.dart';
 import 'package:rive_editor/src/core/commands/shape_commands.dart';
+import 'package:rive_editor/src/core/services/scene_hit_tester.dart';
+import 'package:rive_editor/src/core/services/selection_service.dart';
 import 'package:rive_editor/src/core/services/view_transform.dart';
 import 'package:rive_editor/src/core/tools/editor_tool.dart';
 import 'package:rive_editor/src/core/tools/tool_controller.dart';
@@ -29,6 +32,12 @@ final class _TestToolContext implements ToolContext {
 
   @override
   void dispatch(EditorCommand command) => dispatched.add(command);
+
+  @override
+  SceneHitTester hitTester = SceneHitTester(const []);
+
+  @override
+  final SelectionService selection = SelectionService();
 }
 
 ToolPointerEvent _eventAt(Offset view, {bool secondary = false}) =>
@@ -45,6 +54,7 @@ ToolRegistry _registry() => ToolRegistry()
 
 void main() {
   _shapeToolTests();
+  _selectionHitTests();
   group('ViewTransform', () {
     test('scene/view round-trip at arbitrary scale and offset', () {
       const transform = ViewTransform(scale: 2.5, offset: Offset(40, -12));
@@ -232,6 +242,52 @@ void _shapeToolTests() {
       tool.onPointerDown(context, _eventAt(const Offset(10, 10)));
       tool.deactivate(context);
       expect(tool.sceneRect, isNull);
+    });
+  });
+}
+
+// -- Selection tool with hit testing ---------------------------------------
+
+void _selectionHitTests() {
+  group('selection tool hit testing', () {
+    const region = SceneHitRegion(
+      ref: SceneNodeRef(0, 3),
+      bounds: Rect.fromLTWH(40, 40, 60, 60),
+      drawOrder: 0,
+    );
+
+    test('click on a component selects it', () {
+      final tool = SelectionTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [region]);
+
+      tool.onPointerDown(context, _eventAt(const Offset(50, 50)));
+      tool.onPointerUp(context, _eventAt(const Offset(50, 50)));
+      expect(context.selection.selected, {region.ref});
+    });
+
+    test('marquee from empty space selects intersecting components', () {
+      final tool = SelectionTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [region]);
+
+      tool.onPointerDown(context, _eventAt(const Offset(0, 0)));
+      tool.onPointerMove(context, _eventAt(const Offset(45, 45)));
+      expect(tool.marqueeRect, isNotNull);
+      tool.onPointerUp(context, _eventAt(const Offset(45, 45)));
+      expect(context.selection.selected, {region.ref});
+      expect(tool.marqueeRect, isNull);
+    });
+
+    test('empty marquee clears the selection', () {
+      final tool = SelectionTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [region]);
+      context.selection.select([region.ref]);
+
+      tool.onPointerDown(context, _eventAt(const Offset(200, 200)));
+      tool.onPointerUp(context, _eventAt(const Offset(210, 210)));
+      expect(context.selection.isEmpty, isTrue);
     });
   });
 }

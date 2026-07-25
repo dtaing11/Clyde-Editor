@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/services.dart';
 
 import '../commands/editor_command.dart';
+import '../services/scene_hit_tester.dart';
+import '../services/selection_service.dart';
 import '../services/view_transform.dart';
 
 /// Everything a tool may read or request during interaction.
@@ -24,6 +26,12 @@ abstract interface class ToolContext {
 
   /// Dispatches a document mutation through the command system (§4.4).
   void dispatch(EditorCommand command);
+
+  /// Hit tester over the active artboard's components (§2.3).
+  SceneHitTester get hitTester;
+
+  /// The shared selection (§2.2).
+  SelectionService get selection;
 }
 
 /// A pointer event delivered to a tool, in both coordinate spaces.

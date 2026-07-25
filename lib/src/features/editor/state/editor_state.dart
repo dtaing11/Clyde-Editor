@@ -157,6 +157,12 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   bool get hasUnsavedChanges => _hasUnsavedChanges;
   bool _hasUnsavedChanges = false;
 
+  /// Monotonic counter bumped on every document change (open, edit,
+  /// undo/redo). Lets consumers cache document-derived structures (hit
+  /// testers, trees) and invalidate precisely.
+  int get documentEpoch => _documentEpoch;
+  int _documentEpoch = 0;
+
   /// Current bytes of the document including edits, or `null` when the
   /// document is not editable.
   Uint8List? exportBytes() => _document?.editor?.bytes();
@@ -354,6 +360,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
 
     _document?.dispose();
     _document = doc;
+    _documentEpoch++;
 
     final artboard =
         doc.artboards
@@ -391,6 +398,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
 
     _document?.dispose();
     _document = doc;
+    _documentEpoch++;
     _filePath = null;
     commands.clear();
     _hasUnsavedChanges = false;

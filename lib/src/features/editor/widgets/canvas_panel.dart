@@ -6,10 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
 import '../../../core/commands/editor_command.dart';
+import '../../../core/services/scene_hit_tester.dart';
+import '../../../core/services/selection_service.dart';
 import '../../../core/services/view_transform.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../core/tools/editor_tool.dart';
 import '../../../core/tools/tool_controller.dart';
+import '../../../riv/riv_hit_regions.dart';
 import '../state/editor_state.dart';
 
 /// Center canvas composed of the three layers required by §2.3:
@@ -78,6 +81,31 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
   void dispatch(EditorCommand command) {
     widget.state.dispatch(command);
   }
+
+  SceneHitTester? _hitTester;
+  int _hitTesterDocumentEpoch = -1;
+  int _hitTesterArtboardOrdinal = -1;
+
+  /// Rebuilt only when the document or active artboard changes, never
+  /// per pointer event (§2.3: no per-event scene scans).
+  @override
+  SceneHitTester get hitTester {
+    final raw = widget.state.document?.editor?.raw;
+    final ordinal = widget.state.activeArtboardOrdinal;
+    final epoch = widget.state.documentEpoch;
+    if (raw == null || ordinal < 0) return SceneHitTester(const []);
+    if (_hitTester == null ||
+        _hitTesterDocumentEpoch != epoch ||
+        _hitTesterArtboardOrdinal != ordinal) {
+      _hitTester = SceneHitTester(RivHitRegions.forArtboard(raw, ordinal));
+      _hitTesterDocumentEpoch = epoch;
+      _hitTesterArtboardOrdinal = ordinal;
+    }
+    return _hitTester!;
+  }
+
+  @override
+  SelectionService get selection => widget.state.selection;
 
   // -- Interaction ---------------------------------------------------------
 
