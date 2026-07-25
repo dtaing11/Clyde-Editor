@@ -1,41 +1,22 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../core/model/scene_node_ref.dart';
 import '../../../riv/riv_hierarchy.dart';
 
-/// Location of a component: which artboard tree it lives in plus its
-/// component index within that artboard.
-@immutable
-class SceneNodeRef {
-  const SceneNodeRef(this.artboardOrdinal, this.componentIndex);
+export '../../../core/model/scene_node_ref.dart';
 
-  final int artboardOrdinal;
-  final int componentIndex;
-
-  @override
-  bool operator ==(Object other) =>
-      other is SceneNodeRef &&
-      other.artboardOrdinal == artboardOrdinal &&
-      other.componentIndex == componentIndex;
-
-  @override
-  int get hashCode => Object.hash(artboardOrdinal, componentIndex);
-
-  @override
-  String toString() => 'SceneNodeRef($artboardOrdinal:$componentIndex)';
-}
-
-/// UI state of the scene hierarchy: expansion, selection, locks, and
-/// search. Purely editor-side; nothing here touches the `.riv` file.
+/// UI state of the scene hierarchy: expansion, locks, and search.
+/// Purely editor-side; nothing here touches the `.riv` file.
 ///
-/// Locking is an editor concept (the runtime has no lock flag), so locks
-/// live here and gate structural operations at the state layer.
+/// Selection lives in the shared `SelectionService` (§2.2: one
+/// selection across hierarchy, canvas, and inspector), not here.
+/// Locking is an editor concept (the runtime has no lock flag), so
+/// locks live here and gate structural operations at the state layer.
 class SceneHierarchyController extends ChangeNotifier {
   final Set<SceneNodeRef> _expanded = {};
   final Set<SceneNodeRef> _locked = {};
-  SceneNodeRef? _selected;
   String _searchQuery = '';
 
-  SceneNodeRef? get selected => _selected;
   String get searchQuery => _searchQuery;
   bool get isSearching => _searchQuery.isNotEmpty;
 
@@ -57,12 +38,6 @@ class SceneHierarchyController extends ChangeNotifier {
 
   void expand(SceneNodeRef ref) {
     if (_expanded.add(ref)) notifyListeners();
-  }
-
-  void select(SceneNodeRef? ref) {
-    if (_selected == ref) return;
-    _selected = ref;
-    notifyListeners();
   }
 
   void toggleLocked(SceneNodeRef ref) {
@@ -108,14 +83,6 @@ class SceneHierarchyController extends ChangeNotifier {
     _locked
       ..clear()
       ..addAll(locked);
-
-    final selected = _selected;
-    if (selected != null && selected.artboardOrdinal == artboardOrdinal) {
-      final newIndex = remap[selected.componentIndex] ?? -1;
-      _selected = newIndex >= 0
-          ? SceneNodeRef(artboardOrdinal, newIndex)
-          : null;
-    }
     notifyListeners();
   }
 
@@ -123,7 +90,6 @@ class SceneHierarchyController extends ChangeNotifier {
   void reset() {
     _expanded.clear();
     _locked.clear();
-    _selected = null;
     _searchQuery = '';
     notifyListeners();
   }
