@@ -38,6 +38,38 @@ AddShapeCommand _rectangleCommand() => AddShapeCommand(
 void main() {
   _polygonAndTextTests();
   group('RivShapeFactory', () {
+    test('recipe includes a stroke outline with black solid color', () {
+      final raw = RivRawDocument.parse(_blankDocument());
+      RivShapeFactory.addShape(
+        raw,
+        artboardOrdinal: 0,
+        kind: RivShapeKind.rectangle,
+        name: 'Outlined',
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+        color: 0xFFFFFFFF,
+      );
+      final reparsed = RivRawDocument.parse(raw.serialize());
+      final stroke = reparsed.objects.firstWhere(
+        (o) => o.typeKey == RivTypeKeys.stroke,
+      );
+      expect(
+        stroke.property(RivPropertyKeys.strokeThickness)!.floatValue,
+        RivShapeFactory.defaultStrokeThickness,
+      );
+      // Two solid colors: fill + stroke; stroke's is black.
+      final colors = reparsed.objects
+          .where((o) => o.typeKey == RivTypeKeys.solidColor)
+          .toList();
+      expect(colors, hasLength(2));
+      expect(
+        colors.last.property(RivPropertyKeys.solidColorValue) != null,
+        isTrue,
+      );
+    });
+
     test('rectangle recipe re-parses with exact objects and values', () {
       final raw = RivRawDocument.parse(_blankDocument());
       final added = RivShapeFactory.addShape(
@@ -75,8 +107,8 @@ void main() {
       final rect = reparsed.objects.firstWhere(
         (o) => o.typeKey == RivTypeKeys.rectangle,
       );
-      expect(rect.property(RivPropertyKeys.layoutWidth)!.floatValue, 120);
-      expect(rect.property(RivPropertyKeys.layoutHeight)!.floatValue, 60);
+      expect(rect.property(RivPropertyKeys.parametricWidth)!.floatValue, 120);
+      expect(rect.property(RivPropertyKeys.parametricHeight)!.floatValue, 60);
     });
 
     test('parent links form Shape<-Path and Shape<-Fill<-SolidColor', () {

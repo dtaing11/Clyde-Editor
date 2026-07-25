@@ -68,6 +68,10 @@ abstract final class RivPropertyKeys {
   static const int layoutWidth = 7;
   static const int layoutHeight = 8;
 
+  // ParametricPath (Rectangle/Ellipse/Polygon/Star/Triangle)
+  static const int parametricWidth = 20;
+  static const int parametricHeight = 21;
+
   // Node
   static const int nodeX = 13;
   static const int nodeY = 14;
@@ -92,6 +96,7 @@ abstract final class RivPropertyKeys {
 
   // Paint
   static const int solidColorValue = 37;
+  static const int strokeThickness = 47;
 
   // Polygon
   static const int polygonPoints = 125;

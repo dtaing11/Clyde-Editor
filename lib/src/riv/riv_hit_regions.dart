@@ -119,8 +119,8 @@ abstract final class RivHitRegions {
     for (final child in node.children) {
       if (!parametricTypes.contains(child.typeKey)) continue;
       final object = componentObjects[child.componentIndex];
-      final width = object?.property(RivPropertyKeys.layoutWidth);
-      final height = object?.property(RivPropertyKeys.layoutHeight);
+      final width = object?.property(RivPropertyKeys.parametricWidth);
+      final height = object?.property(RivPropertyKeys.parametricHeight);
       if (width == null || height == null) continue;
       return Size(width.floatValue, height.floatValue);
     }

@@ -69,6 +69,10 @@ All three desktop platforms (macOS, Windows, Linux) are scaffolded and
 built in CI. Linux needs the usual Flutter desktop packages:
 `ninja-build libgtk-3-dev clang cmake pkg-config`.
 
+## Keyboard shortcuts
+
+See [SHORTCUTS.md](SHORTCUTS.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and PRs are welcome.
