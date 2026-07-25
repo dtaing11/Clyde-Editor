@@ -19,6 +19,8 @@ abstract final class RivTypeKeys {
   static const int linearAnimation = 31;
   static const int keyFrameColor = 37;
   static const int bone = 40;
+  static const int polygon = 51;
+  static const int star = 52;
   static const int rootBone = 41;
   static const int keyFrameId = 50;
   static const int stateMachine = 53;
@@ -28,6 +30,8 @@ abstract final class RivTypeKeys {
   static const int imageAsset = 105;
   static const int fileAssetContents = 106;
   static const int text = 134;
+  static const int textValueRun = 135;
+  static const int textStylePaint = 137;
   static const int fontAsset = 141;
   static const int keyFrameString = 142;
   static const int audioAsset = 406;
@@ -88,6 +92,15 @@ abstract final class RivPropertyKeys {
 
   // Paint
   static const int solidColorValue = 37;
+
+  // Polygon
+  static const int polygonPoints = 125;
+
+  // Text
+  static const int textStyleFontSize = 274;
+  static const int textStyleFontAssetId = 279;
+  static const int textRunStyleId = 272;
+  static const int textRunText = 268;
 }
 
 /// Serialized field categories used by the `.riv` property table of

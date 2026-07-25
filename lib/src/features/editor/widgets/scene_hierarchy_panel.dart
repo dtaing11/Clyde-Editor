@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../core/services/selection_service.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../riv/riv_hierarchy.dart';
+import '../../../shared/widgets/editor_context_menu.dart';
 import '../state/editor_state.dart';
 import '../state/scene_hierarchy_controller.dart';
 import '../state/scene_tree_flattener.dart';
@@ -167,12 +168,15 @@ class _NodeRowState extends State<_NodeRow> {
     final newName = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rename', style: TextStyle(fontSize: 15)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: const TextStyle(fontSize: 13),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
+        title: const Text('Rename'),
+        content: SizedBox(
+          width: 260,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(fontSize: 12),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
         ),
         actions: [
           TextButton(
@@ -194,23 +198,38 @@ class _NodeRowState extends State<_NodeRow> {
   Future<void> _showContextMenu(Offset globalPosition) async {
     final hidden = widget.state.isComponentHidden(widget.nodeRef);
     final locked = _scene.isLocked(widget.nodeRef);
-    final action = await showMenu<String>(
+    final action = await showEditorContextMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        globalPosition.dx,
-        globalPosition.dy,
-        globalPosition.dx,
-        globalPosition.dy,
-      ),
-      items: [
-        const PopupMenuItem(value: 'rename', child: Text('Rename')),
-        const PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
-        PopupMenuItem(value: 'lock', child: Text(locked ? 'Unlock' : 'Lock')),
-        PopupMenuItem(value: 'hide', child: Text(hidden ? 'Show' : 'Hide')),
-        const PopupMenuDivider(),
-        const PopupMenuItem(
+      globalPosition: globalPosition,
+      entries: [
+        const ContextMenuEntry(
+          value: 'rename',
+          label: 'Rename',
+          icon: Icons.drive_file_rename_outline,
+        ),
+        const ContextMenuEntry(
+          value: 'duplicate',
+          label: 'Duplicate',
+          icon: Icons.copy_outlined,
+        ),
+        ContextMenuEntry(
+          value: 'lock',
+          label: locked ? 'Unlock' : 'Lock',
+          icon: locked ? Icons.lock_open : Icons.lock_outline,
+        ),
+        ContextMenuEntry(
+          value: 'hide',
+          label: hidden ? 'Show' : 'Hide',
+          icon: hidden
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
+        ),
+        const ContextMenuEntry(
           value: 'delete',
-          child: Text('Delete', style: TextStyle(color: EditorTheme.playhead)),
+          label: 'Delete',
+          icon: Icons.delete_outline,
+          destructive: true,
+          dividerBefore: true,
         ),
       ],
     );

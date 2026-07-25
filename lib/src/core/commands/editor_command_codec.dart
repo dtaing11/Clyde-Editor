@@ -54,6 +54,7 @@ final class EditorCommandCodec {
     register(AddArtboardCommand.type, AddArtboardCommand.fromJson);
     register(ImportImageAssetCommand.type, ImportImageAssetCommand.fromJson);
     register(AddShapeCommand.type, AddShapeCommand.fromJson);
+    register(AddTextCommand.type, AddTextCommand.fromJson);
     register(
       SetComponentPropertyCommand.type,
       SetComponentPropertyCommand.fromJson,
