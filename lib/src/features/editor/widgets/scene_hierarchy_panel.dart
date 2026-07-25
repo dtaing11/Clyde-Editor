@@ -6,10 +6,15 @@ import '../../../core/theme/editor_theme.dart';
 import '../../../riv/riv_hierarchy.dart';
 import '../state/editor_state.dart';
 import '../state/scene_hierarchy_controller.dart';
+import '../state/scene_tree_flattener.dart';
 import 'editor_panel.dart';
 
 /// Scene hierarchy: searchable component tree per artboard with rename,
 /// drag-and-drop reparenting, lock, hide, duplicate, and delete.
+///
+/// Rendering is virtualised (§2.2): trees flatten to visible rows once
+/// per state change and `ListView.builder` instantiates only on-screen
+/// rows, keeping scrolling flat-cost regardless of node count.
 class SceneHierarchyPanel extends StatelessWidget {
   const SceneHierarchyPanel({super.key, required this.state});
 
@@ -22,23 +27,36 @@ class SceneHierarchyPanel extends StatelessWidget {
       child: ListenableBuilder(
         listenable: Listenable.merge([state.scene, state.selection]),
         builder: (context, _) {
-          final trees = state.hierarchyTrees;
+          final rows = SceneTreeFlattener.flatten(
+            state.hierarchyTrees,
+            state.scene,
+          );
           return Column(
             children: [
               _SearchField(controller: state.scene),
               const Divider(height: 1),
               Expanded(
-                child: trees.isEmpty
+                child: rows.isEmpty
                     ? const _EmptyScene()
-                    : ListView(
-                        children: [
-                          for (var i = 0; i < trees.length; i++)
-                            _ArtboardSection(
-                              state: state,
-                              artboardOrdinal: i,
-                              root: trees[i],
-                            ),
-                        ],
+                    : ListView.builder(
+                        itemCount: rows.length,
+                        itemExtent: 26,
+                        itemBuilder: (context, index) {
+                          final row = rows[index];
+                          return _NodeRow(
+                            key: ValueKey(row.ref),
+                            state: state,
+                            rows: rows,
+                            node: row.node,
+                            nodeRef: row.ref,
+                            ancestorIndices: row.ancestorIndices,
+                            depth: row.depth,
+                            expanded:
+                                state.scene.isSearching ||
+                                state.scene.isExpanded(row.ref),
+                            hasChildren: row.hasChildren,
+                          );
+                        },
                       ),
               ),
             ],
@@ -88,87 +106,6 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-class _ArtboardSection extends StatelessWidget {
-  const _ArtboardSection({
-    required this.state,
-    required this.artboardOrdinal,
-    required this.root,
-  });
-
-  final EditorState state;
-  final int artboardOrdinal;
-  final RivHierarchyNode root;
-
-  @override
-  Widget build(BuildContext context) {
-    final scene = state.scene;
-    if (scene.isSearching && !scene.subtreeMatchesSearch(root)) {
-      return const SizedBox.shrink();
-    }
-    return _HierarchyNodeTile(
-      state: state,
-      artboardOrdinal: artboardOrdinal,
-      node: root,
-      ancestorIndices: const [],
-      depth: 0,
-    );
-  }
-}
-
-/// A single row plus (when expanded) its children.
-class _HierarchyNodeTile extends StatelessWidget {
-  const _HierarchyNodeTile({
-    required this.state,
-    required this.artboardOrdinal,
-    required this.node,
-    required this.ancestorIndices,
-    required this.depth,
-  });
-
-  final EditorState state;
-  final int artboardOrdinal;
-  final RivHierarchyNode node;
-  final List<int> ancestorIndices;
-  final int depth;
-
-  SceneNodeRef get _ref => SceneNodeRef(artboardOrdinal, node.componentIndex);
-
-  @override
-  Widget build(BuildContext context) {
-    final scene = state.scene;
-
-    // While searching, show any node whose subtree matches, expanded.
-    if (scene.isSearching && !scene.subtreeMatchesSearch(node)) {
-      return const SizedBox.shrink();
-    }
-    final expanded = scene.isSearching || scene.isExpanded(_ref);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _NodeRow(
-          state: state,
-          node: node,
-          nodeRef: _ref,
-          ancestorIndices: ancestorIndices,
-          depth: depth,
-          expanded: expanded,
-          hasChildren: node.children.isNotEmpty,
-        ),
-        if (expanded)
-          for (final child in node.children)
-            _HierarchyNodeTile(
-              state: state,
-              artboardOrdinal: artboardOrdinal,
-              node: child,
-              ancestorIndices: [...ancestorIndices, node.componentIndex],
-              depth: depth + 1,
-            ),
-      ],
-    );
-  }
-}
-
 /// Payload carried during a hierarchy drag.
 class _DragPayload {
   const _DragPayload(this.ref, this.label);
@@ -179,7 +116,9 @@ class _DragPayload {
 
 class _NodeRow extends StatefulWidget {
   const _NodeRow({
+    super.key,
     required this.state,
+    required this.rows,
     required this.node,
     required this.nodeRef,
     required this.ancestorIndices,
@@ -189,6 +128,10 @@ class _NodeRow extends StatefulWidget {
   });
 
   final EditorState state;
+
+  /// Currently visible rows, for shift-range selection ordering.
+  final List<SceneTreeRow> rows;
+
   final RivHierarchyNode node;
   final SceneNodeRef nodeRef;
   final List<int> ancestorIndices;
@@ -310,8 +253,21 @@ class _NodeRowState extends State<_NodeRow> {
       behavior: HitTestBehavior.opaque,
       onTap: () {
         final hardware = HardwareKeyboard.instance;
+        final selection = widget.state.selection;
+        final anchor = selection.anchor;
+        if (hardware.isShiftPressed && anchor != null) {
+          selection.select(
+            SceneTreeFlattener.rangeBetween(
+              widget.rows,
+              anchor,
+              widget.nodeRef,
+            ),
+            mode: SelectionMode.range,
+          );
+          return;
+        }
         final toggle = hardware.isMetaPressed || hardware.isControlPressed;
-        widget.state.selection.select([
+        selection.select([
           widget.nodeRef,
         ], mode: toggle ? SelectionMode.toggle : SelectionMode.replace);
       },
