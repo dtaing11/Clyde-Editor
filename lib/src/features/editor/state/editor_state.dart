@@ -5,6 +5,7 @@ import 'package:rive_native/rive_native.dart' as rive;
 import '../../../core/commands/command_processor.dart';
 import '../../../core/commands/document_commands.dart';
 import '../../../core/commands/editor_command.dart';
+import '../../../core/services/selection_service.dart';
 import '../../../riv/riv_artboard_editor.dart';
 import '../../../riv/riv_document_builder.dart';
 import '../../../riv/riv_document_editor.dart';
@@ -45,8 +46,12 @@ class EditorState extends ChangeNotifier implements DocumentContext {
 
   final AutosaveService _autosave;
 
-  /// Scene hierarchy UI state (selection, expansion, locks, search).
+  /// Scene hierarchy UI state (expansion, locks, search).
   final SceneHierarchyController scene = SceneHierarchyController();
+
+  /// The one selection shared by hierarchy, canvas, and inspector
+  /// (§2.2 acceptance).
+  final SelectionService selection = SelectionService();
 
   EditorDocument? _document;
   rive.Artboard? _activeArtboard;
@@ -54,7 +59,6 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   int _selectedAnimationIndex = -1;
   bool _isPlaying = false;
   double _currentTime = 0;
-  RivKeyedObjectModel? _selectedKeyedObject;
   String? _filePath;
 
   EditorDocument? get document => _document;
@@ -80,16 +84,38 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     return _document?.animationModel(artboard.name, animation.name);
   }
 
-  /// The keyed object currently inspected, or `null` for none.
-  ///
-  /// Cleared automatically when the animation or artboard changes.
-  RivKeyedObjectModel? get selectedKeyedObject => _selectedKeyedObject;
+  /// Ordinal of the active artboard in the document, or -1.
+  int get activeArtboardOrdinal {
+    final doc = _document;
+    final artboard = _activeArtboard;
+    if (doc == null || artboard == null) return -1;
+    return doc.artboards.indexOf(artboard);
+  }
 
-  /// Selects [keyedObject] for the inspector; pass `null` to clear.
+  /// The keyed object matching the primary selection in the current
+  /// animation, or `null` when the selection is not animated here.
+  ///
+  /// Derived from the shared [selection] service; the timeline and the
+  /// scene tree both select through it, so the inspector follows both.
+  RivKeyedObjectModel? get selectedKeyedObject {
+    final primary = selection.primary;
+    if (primary == null || primary.artboardOrdinal != activeArtboardOrdinal) {
+      return null;
+    }
+    return selectedAnimationModel?.keyedObjects
+        .where((o) => o.objectId == primary.componentIndex)
+        .firstOrNull;
+  }
+
+  /// Selects the component behind [keyedObject] in the shared selection.
   void selectKeyedObject(RivKeyedObjectModel? keyedObject) {
-    if (identical(_selectedKeyedObject, keyedObject)) return;
-    _selectedKeyedObject = keyedObject;
-    notifyListeners();
+    if (keyedObject == null) {
+      selection.clear();
+      return;
+    }
+    selection.select([
+      SceneNodeRef(activeArtboardOrdinal, keyedObject.objectId),
+    ]);
   }
 
   /// Whether the current document supports byte-level editing.
@@ -106,6 +132,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   @override
   void reportComponentRemap(int artboardOrdinal, Map<int, int> remap) {
     scene.applyRemap(artboardOrdinal, remap);
+    selection.applyComponentRemap(artboardOrdinal, remap);
   }
 
   /// Disk path of the current document, `null` for unsaved documents.
@@ -129,6 +156,12 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   /// Whether there are edits that have not been saved.
   bool get hasUnsavedChanges => _hasUnsavedChanges;
   bool _hasUnsavedChanges = false;
+
+  /// Monotonic counter bumped on every document change (open, edit,
+  /// undo/redo). Lets consumers cache document-derived structures (hit
+  /// testers, trees) and invalidate precisely.
+  int get documentEpoch => _documentEpoch;
+  int _documentEpoch = 0;
 
   /// Current bytes of the document including edits, or `null` when the
   /// document is not editable.
@@ -314,11 +347,11 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   }
 
   /// Re-decodes [bytes] in the engine, preserving artboard/animation
-  /// selection, playhead time and the inspected object where possible.
+  /// selection and playhead time. The shared selection survives on its
+  /// own (structural remaps are applied via [reportComponentRemap]).
   Future<bool> _reloadEngine(String name, Uint8List bytes) async {
     final previousArtboardName = _activeArtboard?.name;
     final previousAnimationIndex = _selectedAnimationIndex;
-    final previousKeyedObjectId = _selectedKeyedObject?.objectId;
     final previousTime = _currentTime;
     final wasPlaying = _isPlaying;
 
@@ -327,22 +360,19 @@ class EditorState extends ChangeNotifier implements DocumentContext {
 
     _document?.dispose();
     _document = doc;
+    _documentEpoch++;
 
     final artboard =
         doc.artboards
             .where((a) => a.name == previousArtboardName)
             .firstOrNull ??
         doc.artboards.first;
-    selectArtboard(artboard);
+    _applyArtboard(artboard);
 
     if (previousAnimationIndex >= 0 &&
         previousAnimationIndex < _animations.length) {
-      selectAnimation(previousAnimationIndex);
-    }
-    if (previousKeyedObjectId != null) {
-      _selectedKeyedObject = selectedAnimationModel?.keyedObjects
-          .where((o) => o.objectId == previousKeyedObjectId)
-          .firstOrNull;
+      _selectedAnimationIndex = previousAnimationIndex;
+      painter.setAnimation(selectedAnimation);
     }
     seek(previousTime);
     if (wasPlaying) togglePlay();
@@ -368,10 +398,12 @@ class EditorState extends ChangeNotifier implements DocumentContext {
 
     _document?.dispose();
     _document = doc;
+    _documentEpoch++;
     _filePath = null;
     commands.clear();
     _hasUnsavedChanges = false;
     scene.reset();
+    selection.clear();
     _autosave.start(documentName: name, snapshotProvider: exportBytes);
     selectArtboard(doc.artboards.first);
     return true;
@@ -379,15 +411,21 @@ class EditorState extends ChangeNotifier implements DocumentContext {
 
   /// Makes [artboard] the one shown in the viewport.
   void selectArtboard(rive.Artboard artboard) {
+    selection.clear();
+    _applyArtboard(artboard);
+    notifyListeners();
+  }
+
+  /// Applies artboard-derived state without touching selection (used
+  /// by engine reloads, where selection is remapped separately).
+  void _applyArtboard(rive.Artboard artboard) {
     _activeArtboard = artboard;
     _animations = _document?.animationsOf(artboard) ?? const [];
     _selectedAnimationIndex = _animations.isEmpty ? -1 : 0;
     _isPlaying = false;
     _currentTime = 0;
-    _selectedKeyedObject = null;
     painter.artboardChanged(artboard);
     painter.setAnimation(selectedAnimation);
-    notifyListeners();
   }
 
   /// Selects the animation at [index] on the active artboard.
@@ -396,7 +434,6 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     _selectedAnimationIndex = index;
     _isPlaying = false;
     _currentTime = 0;
-    _selectedKeyedObject = null;
     painter.setAnimation(selectedAnimation);
     notifyListeners();
   }
@@ -428,6 +465,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   void dispose() {
     _autosave.dispose();
     scene.dispose();
+    selection.dispose();
     _document?.dispose();
     painter.dispose();
     super.dispose();

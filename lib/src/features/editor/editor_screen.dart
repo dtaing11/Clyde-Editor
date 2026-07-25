@@ -7,6 +7,7 @@ import '../../core/tools/tool_controller.dart';
 import 'services/file_service.dart';
 import 'state/editor_state.dart';
 import 'tools/core_tools.dart';
+import 'tools/shape_tools.dart';
 import 'widgets/canvas_panel.dart';
 import 'widgets/editor_toolbar.dart';
 import 'widgets/animations_panel.dart';
@@ -40,7 +41,9 @@ class _EditorScreenState extends State<EditorScreen> {
       registry: ToolRegistry()
         ..register(SelectionTool())
         ..register(HandTool())
-        ..register(const ZoomTool()),
+        ..register(const ZoomTool())
+        ..register(RectangleTool())
+        ..register(EllipseTool()),
       initialToolId: SelectionTool.toolId,
     );
     // Load a bundled demo so the editor is never empty on first launch.
@@ -71,6 +74,10 @@ class _EditorScreenState extends State<EditorScreen> {
         _toolController.activateByShortcut(LogicalKeyboardKey.keyV),
     const SingleActivator(LogicalKeyboardKey.keyH): () =>
         _toolController.activateByShortcut(LogicalKeyboardKey.keyH),
+    const SingleActivator(LogicalKeyboardKey.keyR): () =>
+        _toolController.activateByShortcut(LogicalKeyboardKey.keyR),
+    const SingleActivator(LogicalKeyboardKey.keyO): () =>
+        _toolController.activateByShortcut(LogicalKeyboardKey.keyO),
   };
 
   @override

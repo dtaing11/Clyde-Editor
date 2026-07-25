@@ -2,23 +2,29 @@ import 'dart:ui';
 
 import 'package:flutter/services.dart';
 
+import '../../../core/model/scene_node_ref.dart';
+import '../../../core/services/selection_service.dart';
 import '../../../core/tools/editor_tool.dart';
 
-/// Selection tool: the default pointer. Drags a marquee rectangle on
-/// the overlay; selection semantics attach when the selection service
-/// lands (tracked in PRODUCT_SPEC §2.2/§2.3 acceptance).
+/// Selection tool: the default pointer (§2.2/§2.3).
+///
+/// Click selects the topmost component under the cursor (cmd/ctrl-click
+/// toggles); dragging from empty space draws a marquee that selects
+/// every intersecting component on release.
 final class SelectionTool extends EditorTool {
   SelectionTool();
 
   static const String toolId = 'selection';
 
-  Offset? _marqueeStart;
-  Offset? _marqueeEnd;
+  Offset? _marqueeStartView;
+  Offset? _marqueeEndView;
+  Offset? _marqueeStartScene;
+  Offset? _marqueeEndScene;
 
   /// Current marquee rectangle in view coordinates, or `null`.
   Rect? get marqueeRect {
-    final start = _marqueeStart;
-    final end = _marqueeEnd;
+    final start = _marqueeStartView;
+    final end = _marqueeEndView;
     if (start == null || end == null) return null;
     return Rect.fromPoints(start, end);
   }
@@ -35,35 +41,72 @@ final class SelectionTool extends EditorTool {
   @override
   MouseCursor get cursor => SystemMouseCursors.basic;
 
+  static SelectionMode _modeOf(ToolPointerEvent event) =>
+      event.isToggleModifierPressed
+      ? SelectionMode.toggle
+      : SelectionMode.replace;
+
   @override
   void onPointerDown(ToolContext context, ToolPointerEvent event) {
-    _marqueeStart = event.viewPosition;
-    _marqueeEnd = event.viewPosition;
+    final hit = context.hitTester.hitTest(event.scenePosition);
+    if (hit != null) {
+      context.selection.select([hit.ref], mode: _modeOf(event));
+      return;
+    }
+    // Empty space: begin a marquee.
+    _marqueeStartView = event.viewPosition;
+    _marqueeEndView = event.viewPosition;
+    _marqueeStartScene = event.scenePosition;
+    _marqueeEndScene = event.scenePosition;
     context.requestOverlayRepaint();
   }
 
   @override
   void onPointerMove(ToolContext context, ToolPointerEvent event) {
-    if (_marqueeStart == null) return;
-    _marqueeEnd = event.viewPosition;
+    if (_marqueeStartView == null) return;
+    _marqueeEndView = event.viewPosition;
+    _marqueeEndScene = event.scenePosition;
     context.requestOverlayRepaint();
   }
 
   @override
   void onPointerUp(ToolContext context, ToolPointerEvent event) {
-    _marqueeStart = null;
-    _marqueeEnd = null;
+    final startScene = _marqueeStartScene;
+    final endScene = _marqueeEndScene;
+    _clearMarquee(context);
+    if (startScene == null || endScene == null) return;
+
+    final sceneRect = Rect.fromPoints(startScene, endScene);
+    final hits = context.hitTester.hitTestRect(sceneRect);
+    final refs = [for (final hit in hits) hit.ref];
+    final mode = _modeOf(event);
+    if (refs.isEmpty && mode == SelectionMode.replace) {
+      context.selection.clear();
+    } else if (refs.isNotEmpty) {
+      context.selection.select(refs, mode: mode);
+    }
+  }
+
+  void _clearMarquee(ToolContext context) {
+    _marqueeStartView = null;
+    _marqueeEndView = null;
+    _marqueeStartScene = null;
+    _marqueeEndScene = null;
     context.requestOverlayRepaint();
   }
 
   @override
   void deactivate(ToolContext context) {
-    _marqueeStart = null;
-    _marqueeEnd = null;
+    _marqueeStartView = null;
+    _marqueeEndView = null;
+    _marqueeStartScene = null;
+    _marqueeEndScene = null;
   }
 
   @override
   void paintOverlay(Canvas canvas, Size size, ToolContext context) {
+    _paintSelectionOutlines(canvas, context);
+
     final rect = marqueeRect;
     if (rect == null) return;
     canvas.drawRect(
@@ -79,6 +122,33 @@ final class SelectionTool extends EditorTool {
         ..strokeWidth = 1
         ..color = const Color(0xFF57A5FF),
     );
+  }
+
+  void _paintSelectionOutlines(Canvas canvas, ToolContext context) {
+    final outline = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = const Color(0xFF57A5FF);
+    final handle = Paint()..color = const Color(0xFF57A5FF);
+    const handleRadius = 2.5;
+
+    for (final SceneNodeRef ref in context.selection.selected) {
+      final bounds = context.hitTester.boundsOf(ref);
+      if (bounds == null) continue;
+      final viewRect = Rect.fromPoints(
+        context.viewTransform.sceneToView(bounds.topLeft),
+        context.viewTransform.sceneToView(bounds.bottomRight),
+      );
+      canvas.drawRect(viewRect, outline);
+      for (final corner in [
+        viewRect.topLeft,
+        viewRect.topRight,
+        viewRect.bottomLeft,
+        viewRect.bottomRight,
+      ]) {
+        canvas.drawCircle(corner, handleRadius, handle);
+      }
+    }
   }
 }
 

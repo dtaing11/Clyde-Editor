@@ -3,12 +3,17 @@ import 'dart:ui' show PointMode;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../core/commands/editor_command.dart';
+import '../../../core/services/scene_hit_tester.dart';
+import '../../../core/services/selection_service.dart';
 import '../../../core/services/view_transform.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../core/tools/editor_tool.dart';
 import '../../../core/tools/tool_controller.dart';
+import '../../../riv/riv_hit_regions.dart';
 import '../state/editor_state.dart';
 
 /// Center canvas composed of the three layers required by §2.3:
@@ -70,12 +75,49 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
     _overlayEpoch.value++;
   }
 
+  @override
+  int get activeArtboardOrdinal => widget.state.activeArtboardOrdinal;
+
+  @override
+  void dispatch(EditorCommand command) {
+    widget.state.dispatch(command);
+  }
+
+  SceneHitTester? _hitTester;
+  int _hitTesterDocumentEpoch = -1;
+  int _hitTesterArtboardOrdinal = -1;
+
+  /// Rebuilt only when the document or active artboard changes, never
+  /// per pointer event (§2.3: no per-event scene scans).
+  @override
+  SceneHitTester get hitTester {
+    final raw = widget.state.document?.editor?.raw;
+    final ordinal = widget.state.activeArtboardOrdinal;
+    final epoch = widget.state.documentEpoch;
+    if (raw == null || ordinal < 0) return SceneHitTester(const []);
+    if (_hitTester == null ||
+        _hitTesterDocumentEpoch != epoch ||
+        _hitTesterArtboardOrdinal != ordinal) {
+      _hitTester = SceneHitTester(RivHitRegions.forArtboard(raw, ordinal));
+      _hitTesterDocumentEpoch = epoch;
+      _hitTesterArtboardOrdinal = ordinal;
+    }
+    return _hitTester!;
+  }
+
+  @override
+  SelectionService get selection => widget.state.selection;
+
   // -- Interaction ---------------------------------------------------------
 
   ToolPointerEvent _toolEvent(PointerEvent event) => ToolPointerEvent(
     viewPosition: event.localPosition,
     scenePosition: _transform.value.viewToScene(event.localPosition),
     isSecondary: event.buttons == 2,
+    isToggleModifierPressed:
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isControlPressed,
+    isRangeModifierPressed: HardwareKeyboard.instance.isShiftPressed,
   );
 
   void _zoomTo(double scale) {
