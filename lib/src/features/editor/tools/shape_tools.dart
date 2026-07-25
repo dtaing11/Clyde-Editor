@@ -153,3 +153,39 @@ final class EllipseTool extends ShapeCreationTool {
     canvas.drawOval(rect, paint);
   }
 }
+
+
+/// Drag-to-create regular polygons (pentagon by default).
+final class PolygonTool extends ShapeCreationTool {
+  PolygonTool();
+
+  static const String toolId = 'polygon';
+
+  @override
+  String get id => toolId;
+
+  @override
+  String get label => 'Polygon';
+
+  @override
+  LogicalKeyboardKey? get shortcut => LogicalKeyboardKey.keyP;
+
+  @override
+  RivShapeKind get kind => RivShapeKind.polygon;
+
+  @override
+  void paintGhost(Canvas canvas, Rect rect, Paint paint) {
+    final path = Path();
+    final center = rect.center;
+    const points = RivShapeFactory.defaultPolygonPoints;
+    for (var i = 0; i <= points; i++) {
+      final angle = -math.pi / 2 + i * 2 * math.pi / points;
+      final vertex = Offset(
+        center.dx + math.cos(angle) * rect.width / 2,
+        center.dy + math.sin(angle) * rect.height / 2,
+      );
+      i == 0 ? path.moveTo(vertex.dx, vertex.dy) : path.lineTo(vertex.dx, vertex.dy);
+    }
+    canvas.drawPath(path, paint);
+  }
+}
