@@ -46,6 +46,13 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
   /// overlay never repaints because content changed, and vice versa).
   final ValueNotifier<int> _overlayEpoch = ValueNotifier(0);
 
+  /// Identity of the last-fitted view: (documentSessionId, artboard
+  /// ordinal). Engine reloads after edits create new artboard objects
+  /// for the *same* logical artboard, so object identity would refit
+  /// (and yank the user's zoom) on every edit; this pair is stable
+  /// across edits and changes only on real navigation.
+  (int, int)? _fittedViewIdentity;
+
   @override
   void initState() {
     super.initState();
@@ -131,90 +138,148 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
     );
   }
 
-  void _resetView() => setViewTransform(const ViewTransform());
+  void _resetView() {
+    final artboard = widget.state.activeArtboard;
+    final size = context.size;
+    if (artboard == null || size == null) {
+      _transform.value = const ViewTransform();
+      return;
+    }
+    setViewTransform(
+      ViewTransform.fit(
+        Size(artboard.bounds.width, artboard.bounds.height),
+        size,
+      ),
+    );
+  }
+
+  /// Fits the view to [artboard] once per (document, artboard ordinal),
+  /// after the first frame in which it appears (viewport size is known
+  /// then). Edits reload the engine but keep the same identity, so the
+  /// user's zoom and pan survive editing.
+  void _fitOnArtboardChange(rive.Artboard? artboard, Size viewportSize) {
+    if (artboard == null) return;
+    final identity = (
+      widget.state.documentSessionId,
+      widget.state.activeArtboardOrdinal,
+    );
+    if (identity == _fittedViewIdentity) return;
+    _fittedViewIdentity = identity;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setViewTransform(
+        ViewTransform.fit(
+          Size(artboard.bounds.width, artboard.bounds.height),
+          viewportSize,
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final artboard = widget.state.activeArtboard;
-    final tool = widget.toolController.activeTool;
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: Listener(
-            onPointerDown: (event) =>
-                tool?.onPointerDown(this, _toolEvent(event)),
-            onPointerMove: (event) =>
-                tool?.onPointerMove(this, _toolEvent(event)),
-            onPointerUp: (event) => tool?.onPointerUp(this, _toolEvent(event)),
-            onPointerSignal: (event) {
-              if (event is PointerScrollEvent) {
-                final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
-                setViewTransform(
-                  _transform.value.zoomedBy(
-                    factor,
-                    viewAnchor: event.localPosition,
-                  ),
-                );
-              }
-            },
-            child: MouseRegion(
-              cursor: tool?.cursor ?? MouseCursor.defer,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _GridPainter(transform: _transform),
-                    ),
-                  ),
-                  if (artboard != null)
-                    RepaintBoundary(
-                      child: ClipRect(
-                        child: _TransformedContent(
-                          transform: _transform,
-                          child: Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(48),
-                              child: rive.RiveArtboardWidget(
-                                artboard: artboard,
-                                painter: widget.state.painter,
+    // Rebuilds when the active tool changes so pointer routing, cursor,
+    // and the overlay painter always reference the current tool.
+    return ListenableBuilder(
+      listenable: widget.toolController,
+      builder: (context, _) {
+        final tool = widget.toolController.activeTool;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            _fitOnArtboardChange(artboard, constraints.biggest);
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: Listener(
+                    onPointerDown: (event) =>
+                        tool?.onPointerDown(this, _toolEvent(event)),
+                    onPointerMove: (event) =>
+                        tool?.onPointerMove(this, _toolEvent(event)),
+                    onPointerUp: (event) =>
+                        tool?.onPointerUp(this, _toolEvent(event)),
+                    onPointerSignal: (event) {
+                      if (event is PointerScrollEvent) {
+                        final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
+                        setViewTransform(
+                          _transform.value.zoomedBy(
+                            factor,
+                            viewAnchor: event.localPosition,
+                          ),
+                        );
+                      }
+                    },
+                    child: MouseRegion(
+                      cursor: tool?.cursor ?? MouseCursor.defer,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          RepaintBoundary(
+                            child: CustomPaint(
+                              painter: _GridPainter(transform: _transform),
+                            ),
+                          ),
+                          if (artboard != null)
+                            RepaintBoundary(
+                              child: ClipRect(
+                                child: _TransformedContent(
+                                  transform: _transform,
+                                  // Anchored at scene (0,0) and sized
+                                  // exactly to the artboard: artboard
+                                  // coordinates ARE scene coordinates,
+                                  // so hit regions and overlays align
+                                  // with the rendered content (§2.3).
+                                  // Align loosens the Stack's tight
+                                  // constraints so the SizedBox holds.
+                                  child: Align(
+                                    alignment: Alignment.topLeft,
+                                    child: SizedBox(
+                                      width: artboard.bounds.width,
+                                      height: artboard.bounds.height,
+                                      child: rive.RiveArtboardWidget(
+                                        artboard: artboard,
+                                        painter: widget.state.painter,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            const _EmptyCanvas(),
+                          RepaintBoundary(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: _ToolOverlayPainter(
+                                  epoch: _overlayEpoch,
+                                  tool: tool,
+                                  toolContext: this,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    )
-                  else
-                    const _EmptyCanvas(),
-                  RepaintBoundary(
-                    child: IgnorePointer(
-                      child: CustomPaint(
-                        painter: _ToolOverlayPainter(
-                          epoch: _overlayEpoch,
-                          tool: tool,
-                          toolContext: this,
-                        ),
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          right: 10,
-          bottom: 10,
-          child: ValueListenableBuilder(
-            valueListenable: _transform,
-            builder: (context, transform, _) => _ZoomControls(
-              scale: transform.scale,
-              onZoomTo: _zoomTo,
-              onReset: _resetView,
-            ),
-          ),
-        ),
-      ],
+                ),
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: ValueListenableBuilder(
+                    valueListenable: _transform,
+                    builder: (context, transform, _) => _ZoomControls(
+                      scale: transform.scale,
+                      onZoomTo: _zoomTo,
+                      onReset: _resetView,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
