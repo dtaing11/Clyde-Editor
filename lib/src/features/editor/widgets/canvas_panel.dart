@@ -189,9 +189,7 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
                         tool?.onPointerUp(this, _toolEvent(event)),
                     onPointerSignal: (event) {
                       if (event is PointerScrollEvent) {
-                        final factor = event.scrollDelta.dy < 0
-                            ? 1.1
-                            : 1 / 1.1;
+                        final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
                         setViewTransform(
                           _transform.value.zoomedBy(
                             factor,
