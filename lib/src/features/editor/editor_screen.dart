@@ -54,8 +54,8 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
       initialToolId: SelectionTool.toolId,
     );
-    // Load a bundled demo so the editor is never empty on first launch.
-    _state.loadFromAsset('assets/demo/little_machine.riv');
+    // Start with a blank document; users create artboards on demand.
+    _state.newDocument();
   }
 
   @override

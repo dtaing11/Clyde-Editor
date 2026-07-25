@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/editor_theme.dart';
+import '../../../shared/widgets/artboard_spec_dialog.dart';
 import '../services/file_service.dart';
 import '../state/editor_state.dart';
 
@@ -16,7 +17,14 @@ class EditorToolbar extends StatelessWidget {
   final FileService files;
 
   Future<void> _newDocument(BuildContext context) async {
-    final ok = await state.newDocument();
+    final spec = await showArtboardSpecDialog(context, title: 'New Document');
+    if (spec == null) return;
+    final ok = await state.newDocument(
+      artboardName: spec.name,
+      width: spec.width,
+      height: spec.height,
+      backgroundColor: spec.backgroundColor,
+    );
     if (!ok && context.mounted) {
       _showMessage(context, 'Could not create document');
     }
@@ -80,7 +88,17 @@ class EditorToolbar extends StatelessWidget {
 
   Future<void> _addArtboard(BuildContext context) async {
     final existing = state.document?.artboards.length ?? 0;
-    await state.addArtboard('Artboard ${existing + 1}');
+    final spec = await showArtboardSpecDialog(
+      context,
+      initialName: 'Artboard ${existing + 1}',
+    );
+    if (spec == null) return;
+    await state.addArtboard(
+      spec.name,
+      width: spec.width,
+      height: spec.height,
+      backgroundColor: spec.backgroundColor,
+    );
   }
 
   void _showMessage(BuildContext context, String message) {

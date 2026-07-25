@@ -247,16 +247,39 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   }
 
   /// Creates a blank document with one artboard.
-  Future<bool> newDocument({String name = 'untitled'}) async {
-    final bytes = RivDocumentBuilder.newDocument();
+  Future<bool> newDocument({
+    String name = 'untitled',
+    String artboardName = 'Artboard',
+    double width = AddArtboardCommand.defaultSize,
+    double height = AddArtboardCommand.defaultSize,
+    int? backgroundColor,
+  }) async {
+    final bytes = RivDocumentBuilder.newDocument(
+      artboardName: artboardName,
+      width: width,
+      height: height,
+      backgroundColor: backgroundColor,
+    );
     final ok = await _openDocument(name, bytes);
     if (ok) _filePath = null;
     return ok;
   }
 
   /// Appends a new artboard to the document and selects it.
-  Future<bool> addArtboard(String name) async {
-    final ok = await dispatch(AddArtboardCommand(name: name));
+  Future<bool> addArtboard(
+    String name, {
+    double width = AddArtboardCommand.defaultSize,
+    double height = AddArtboardCommand.defaultSize,
+    int? backgroundColor,
+  }) async {
+    final ok = await dispatch(
+      AddArtboardCommand(
+        name: name,
+        width: width,
+        height: height,
+        backgroundColor: backgroundColor,
+      ),
+    );
     if (ok) {
       final added = _document?.artboards
           .where((a) => a.name == name)
