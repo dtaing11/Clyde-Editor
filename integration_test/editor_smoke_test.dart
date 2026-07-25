@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:rive_native/rive_native.dart' as rive;
@@ -79,6 +80,36 @@ void main() {
     expect(artboard, isNotNull);
     final component = artboard!.component('EngineRect');
     expect(component, isNotNull, reason: 'shape must exist in the engine');
+    artboard.dispose();
+    file.dispose();
+  });
+
+  testWidgets('text command output decodes in the native engine', (
+    tester,
+  ) async {
+    await rive.RiveNative.init();
+
+    final fontData = await rootBundle.load('assets/fonts/Inter.ttf');
+    final editor = RivDocumentEditor.parse(RivDocumentBuilder.newDocument());
+    final context = _EngineTestContext(editor);
+    final command = AddTextCommand(
+      artboardOrdinal: 0,
+      name: 'EngineText',
+      text: 'Hello Clyde',
+      x: 250,
+      y: 250,
+      fontBytes: fontData.buffer.asUint8List(),
+      fontName: 'Inter',
+    );
+    expect(command.execute(context).succeeded, isTrue);
+
+    final file = await rive.File.decode(
+      editor.bytes(),
+      riveFactory: rive.Factory.rive,
+    );
+    expect(file, isNotNull, reason: 'engine must accept text bytes');
+    final artboard = file!.artboardAt(0);
+    expect(artboard!.component('EngineText'), isNotNull);
     artboard.dispose();
     file.dispose();
   });

@@ -8,6 +8,7 @@ import 'services/file_service.dart';
 import 'state/editor_state.dart';
 import 'tools/core_tools.dart';
 import 'tools/shape_tools.dart';
+import 'tools/text_tool.dart';
 import 'widgets/canvas_panel.dart';
 import 'widgets/editor_toolbar.dart';
 import 'widgets/animations_panel.dart';
@@ -43,7 +44,14 @@ class _EditorScreenState extends State<EditorScreen> {
         ..register(HandTool())
         ..register(const ZoomTool())
         ..register(RectangleTool())
-        ..register(EllipseTool()),
+        ..register(EllipseTool())
+        ..register(PolygonTool())
+        ..register(
+          TextTool(
+            fontProvider: const BundleFontProvider(),
+            requestContent: _requestTextContent,
+          ),
+        ),
       initialToolId: SelectionTool.toolId,
     );
     // Load a bundled demo so the editor is never empty on first launch.
@@ -78,7 +86,42 @@ class _EditorScreenState extends State<EditorScreen> {
         _toolController.activateByShortcut(LogicalKeyboardKey.keyR),
     const SingleActivator(LogicalKeyboardKey.keyO): () =>
         _toolController.activateByShortcut(LogicalKeyboardKey.keyO),
+    const SingleActivator(LogicalKeyboardKey.keyP): () =>
+        _toolController.activateByShortcut(LogicalKeyboardKey.keyP),
+    const SingleActivator(LogicalKeyboardKey.keyT): () =>
+        _toolController.activateByShortcut(LogicalKeyboardKey.keyT),
   };
+
+  /// Themed content prompt used by the Text tool.
+  Future<String?> _requestTextContent() {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Text'),
+        content: SizedBox(
+          width: 280,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(fontSize: 12),
+            decoration: const InputDecoration(hintText: 'Enter text…'),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
