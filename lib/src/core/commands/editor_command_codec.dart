@@ -1,5 +1,6 @@
 import 'editor_command.dart';
 import 'document_commands.dart';
+import 'property_commands.dart';
 import 'shape_commands.dart';
 
 /// Deserialises commands by type name (§4.5: a registry, not a switch).
@@ -53,5 +54,9 @@ final class EditorCommandCodec {
     register(AddArtboardCommand.type, AddArtboardCommand.fromJson);
     register(ImportImageAssetCommand.type, ImportImageAssetCommand.fromJson);
     register(AddShapeCommand.type, AddShapeCommand.fromJson);
+    register(
+      SetComponentPropertyCommand.type,
+      SetComponentPropertyCommand.fromJson,
+    );
   }
 }

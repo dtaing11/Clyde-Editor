@@ -18,6 +18,13 @@ abstract class SnapshotUndoCommand extends EditorCommand {
 
   Uint8List? _beforeBytes;
 
+  /// Transfers the pre-execution snapshot from [source] to this command
+  /// (used by [mergeWith] so a merged command undoes to the original
+  /// state, not an intermediate one).
+  void adoptSnapshotFrom(SnapshotUndoCommand source) {
+    _beforeBytes = source._beforeBytes;
+  }
+
   /// Performs the mutation. The document is already snapshotted.
   CommandResult mutate(DocumentContext context);
 
@@ -126,7 +133,7 @@ final class RetimeKeyframeCommand extends SnapshotUndoCommand {
       rawObjectIndex: rawObjectIndex,
       newFrame: next.newFrame,
       durationFrames: next.durationFrames,
-    ).._beforeBytes = _beforeBytes;
+    )..adoptSnapshotFrom(this);
   }
 
   @override

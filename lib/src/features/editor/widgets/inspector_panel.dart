@@ -1,42 +1,113 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/model/property_metadata.dart';
+import '../../../core/model/scene_node_ref.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../riv/riv_document_model.dart';
 import '../../../riv/riv_keyframe_evaluator.dart';
 import '../state/editor_state.dart';
 import 'editor_panel.dart';
+import 'property_grid.dart';
 
-/// Right-side inspector: shows the primary selected component and, when
-/// it is animated in the current animation, its property values
-/// evaluated at the playhead.
+/// Right-side inspector.
 ///
-/// Selection comes from the shared `SelectionService` (§2.2); the
-/// timeline's keyed-object clicks route through the same service.
+/// Top: metadata-generated property grid for the primary selection
+/// (§2.5, editable via commands). Below: animated property values at
+/// the playhead when the selection is keyed in the current animation.
 class InspectorPanel extends StatelessWidget {
-  const InspectorPanel({super.key, required this.state});
+  InspectorPanel({super.key, required this.state});
 
   final EditorState state;
+
+  /// Property metadata registry; construction is cheap and pure, and
+  /// panel instances are rebuilt only on editor-level changes.
+  final PropertyMetadataRegistry registry = PropertyMetadataRegistry.standard();
 
   @override
   Widget build(BuildContext context) {
     return EditorPanel(
       title: 'Inspector',
       child: ListenableBuilder(
-        listenable: state.selection,
+        listenable: Listenable.merge([state.selection, state]),
         builder: (context, _) {
+          final primary = state.selection.primary;
+          if (primary == null) return const _EmptyInspector();
+
           final keyedObject = state.selectedKeyedObject;
           final animationModel = state.selectedAnimationModel;
-          if (keyedObject == null || animationModel == null) {
-            return const _EmptyInspector();
-          }
-          return _ObjectInspector(
-            keyedObject: keyedObject,
-            animation: animationModel,
-            currentTime: state.currentTime,
-            selectionCount: state.selection.count,
+          return ListView(
+            padding: const EdgeInsets.all(10),
+            children: [
+              _SelectionHeader(
+                state: state,
+                nodeRef: primary,
+                selectionCount: state.selection.count,
+              ),
+              PropertyGrid(state: state, registry: registry, nodeRef: primary),
+              if (keyedObject != null && animationModel != null)
+                _AnimatedValuesSection(
+                  keyedObject: keyedObject,
+                  animation: animationModel,
+                  currentTime: state.currentTime,
+                ),
+            ],
           );
         },
       ),
+    );
+  }
+}
+
+/// Name row for the current selection.
+class _SelectionHeader extends StatelessWidget {
+  const _SelectionHeader({
+    required this.state,
+    required this.nodeRef,
+    required this.selectionCount,
+  });
+
+  final EditorState state;
+  final SceneNodeRef nodeRef;
+  final int selectionCount;
+
+  String get _label {
+    final trees = state.hierarchyTrees;
+    if (nodeRef.artboardOrdinal < trees.length) {
+      final node = _find(trees[nodeRef.artboardOrdinal]);
+      if (node != null) return node.label;
+    }
+    return 'Component ${nodeRef.componentIndex}';
+  }
+
+  dynamic _find(dynamic node) {
+    if (node.componentIndex == nodeRef.componentIndex) return node;
+    for (final child in node.children) {
+      final found = _find(child);
+      if (found != null) return found;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.widgets_outlined, size: 14, color: EditorTheme.accent),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            selectionCount > 1
+                ? '$_label  (+${selectionCount - 1} more)'
+                : _label,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: EditorTheme.textPrimary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -59,39 +130,31 @@ class _EmptyInspector extends StatelessWidget {
   }
 }
 
-class _ObjectInspector extends StatelessWidget {
-  const _ObjectInspector({
+/// Animated property values at the playhead for a keyed selection.
+class _AnimatedValuesSection extends StatelessWidget {
+  const _AnimatedValuesSection({
     required this.keyedObject,
     required this.animation,
     required this.currentTime,
-    required this.selectionCount,
   });
 
   final RivKeyedObjectModel keyedObject;
   final RivAnimationModel animation;
   final double currentTime;
-  final int selectionCount;
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(10),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(
-          icon: Icons.widgets_outlined,
-          title: selectionCount > 1
-              ? '${keyedObject.objectName}  (+${selectionCount - 1} more)'
-              : keyedObject.objectName,
-        ),
+        const SizedBox(height: 12),
+        const _SectionHeader(icon: Icons.tune, title: 'Animated properties'),
         const SizedBox(height: 4),
-        _InfoRow(label: 'Object index', value: '${keyedObject.objectId}'),
         _InfoRow(label: 'Tracks', value: '${keyedObject.properties.length}'),
         _InfoRow(
           label: 'Playhead',
           value: '${currentTime.toStringAsFixed(3)}s',
         ),
-        const SizedBox(height: 12),
-        const _SectionHeader(icon: Icons.tune, title: 'Animated properties'),
         const SizedBox(height: 4),
         for (final property in keyedObject.properties)
           _PropertyValueTile(
