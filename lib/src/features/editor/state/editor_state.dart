@@ -163,6 +163,13 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   int get documentEpoch => _documentEpoch;
   int _documentEpoch = 0;
 
+  /// Increments only when a different document is opened, not on
+  /// engine reloads after edits. With [activeArtboardOrdinal] this
+  /// identifies "the artboard the user is looking at" stably across
+  /// edits, so views can refit on navigation but never on edits.
+  int get documentSessionId => _documentSessionId;
+  int _documentSessionId = 0;
+
   /// Current bytes of the document including edits, or `null` when the
   /// document is not editable.
   Uint8List? exportBytes() => _document?.editor?.bytes();
@@ -399,6 +406,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     _document?.dispose();
     _document = doc;
     _documentEpoch++;
+    _documentSessionId++;
     _filePath = null;
     commands.clear();
     _hasUnsavedChanges = false;

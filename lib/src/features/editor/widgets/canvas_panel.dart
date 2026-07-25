@@ -46,8 +46,12 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
   /// overlay never repaints because content changed, and vice versa).
   final ValueNotifier<int> _overlayEpoch = ValueNotifier(0);
 
-  /// Artboard the view was last fitted to; refit on artboard switch.
-  rive.Artboard? _fittedArtboard;
+  /// Identity of the last-fitted view: (documentSessionId, artboard
+  /// ordinal). Engine reloads after edits create new artboard objects
+  /// for the *same* logical artboard, so object identity would refit
+  /// (and yank the user's zoom) on every edit; this pair is stable
+  /// across edits and changes only on real navigation.
+  (int, int)? _fittedViewIdentity;
 
   @override
   void initState() {
@@ -149,11 +153,18 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
     );
   }
 
-  /// Fits the view to [artboard] once per artboard switch, after the
-  /// first frame in which it appears (viewport size is known then).
+  /// Fits the view to [artboard] once per (document, artboard ordinal),
+  /// after the first frame in which it appears (viewport size is known
+  /// then). Edits reload the engine but keep the same identity, so the
+  /// user's zoom and pan survive editing.
   void _fitOnArtboardChange(rive.Artboard? artboard, Size viewportSize) {
-    if (artboard == null || identical(artboard, _fittedArtboard)) return;
-    _fittedArtboard = artboard;
+    if (artboard == null) return;
+    final identity = (
+      widget.state.documentSessionId,
+      widget.state.activeArtboardOrdinal,
+    );
+    if (identity == _fittedViewIdentity) return;
+    _fittedViewIdentity = identity;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setViewTransform(
