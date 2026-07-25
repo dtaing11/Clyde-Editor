@@ -41,9 +41,8 @@ final class SelectionTool extends EditorTool {
   @override
   MouseCursor get cursor => SystemMouseCursors.basic;
 
-  static SelectionMode _modeFromKeyboard() =>
-      HardwareKeyboard.instance.isMetaPressed ||
-          HardwareKeyboard.instance.isControlPressed
+  static SelectionMode _modeOf(ToolPointerEvent event) =>
+      event.isToggleModifierPressed
       ? SelectionMode.toggle
       : SelectionMode.replace;
 
@@ -51,7 +50,7 @@ final class SelectionTool extends EditorTool {
   void onPointerDown(ToolContext context, ToolPointerEvent event) {
     final hit = context.hitTester.hitTest(event.scenePosition);
     if (hit != null) {
-      context.selection.select([hit.ref], mode: _modeFromKeyboard());
+      context.selection.select([hit.ref], mode: _modeOf(event));
       return;
     }
     // Empty space: begin a marquee.
@@ -80,10 +79,11 @@ final class SelectionTool extends EditorTool {
     final sceneRect = Rect.fromPoints(startScene, endScene);
     final hits = context.hitTester.hitTestRect(sceneRect);
     final refs = [for (final hit in hits) hit.ref];
-    if (refs.isEmpty && _modeFromKeyboard() == SelectionMode.replace) {
+    final mode = _modeOf(event);
+    if (refs.isEmpty && mode == SelectionMode.replace) {
       context.selection.clear();
     } else if (refs.isNotEmpty) {
-      context.selection.select(refs, mode: _modeFromKeyboard());
+      context.selection.select(refs, mode: mode);
     }
   }
 

@@ -40,11 +40,19 @@ final class ToolPointerEvent {
     required this.viewPosition,
     required this.scenePosition,
     this.isSecondary = false,
+    this.isToggleModifierPressed = false,
+    this.isRangeModifierPressed = false,
   });
 
   final Offset viewPosition;
   final Offset scenePosition;
   final bool isSecondary;
+
+  /// Cmd/Ctrl held: toggle-style selection.
+  final bool isToggleModifierPressed;
+
+  /// Shift held: range-style selection.
+  final bool isRangeModifierPressed;
 }
 
 /// Contract every canvas tool implements (§2.4).

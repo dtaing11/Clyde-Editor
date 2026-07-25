@@ -3,6 +3,7 @@ import 'dart:ui' show PointMode;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
 import '../../../core/commands/editor_command.dart';
@@ -113,6 +114,10 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
     viewPosition: event.localPosition,
     scenePosition: _transform.value.viewToScene(event.localPosition),
     isSecondary: event.buttons == 2,
+    isToggleModifierPressed:
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isControlPressed,
+    isRangeModifierPressed: HardwareKeyboard.instance.isShiftPressed,
   );
 
   void _zoomTo(double scale) {

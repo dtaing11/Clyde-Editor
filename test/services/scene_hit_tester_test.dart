@@ -32,8 +32,10 @@ void main() {
       final tester = SceneHitTester(const [bottom, top]);
       final hits = tester.hitTestRect(const Rect.fromLTWH(40, 40, 30, 30));
       expect(hits.map((h) => h.ref), containsAll([bottom.ref, top.ref]));
-      expect(tester.hitTestRect(const Rect.fromLTWH(300, 300, 10, 10)),
-          isEmpty);
+      expect(
+        tester.hitTestRect(const Rect.fromLTWH(300, 300, 10, 10)),
+        isEmpty,
+      );
     });
 
     test('boundsOf resolves by ref', () {
