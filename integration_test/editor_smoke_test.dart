@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -43,8 +42,9 @@ void main() {
     expect(find.byType(rive.RiveArtboardWidget), findsOneWidget);
     expect(find.text('untitled.riv'), findsOneWidget);
 
-    // Playback transport is wired up.
-    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    // A blank document has no animations yet, so the timeline shows
+    // its empty state instead of transport controls.
+    expect(find.text('Select an animation'), findsOneWidget);
   });
 
   testWidgets('shape command output decodes in the native engine', (
