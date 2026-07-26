@@ -220,3 +220,113 @@ final class ComponentMove {
   final double x;
   final double y;
 }
+
+/// Sets one colour on one or more components' colour properties
+/// (fill/stroke SolidColors).
+///
+/// Carries every target in one command so eyedropper application to a
+/// multi-selection is one undo entry; mergeable so continuous picker
+/// adjustments coalesce.
+final class SetComponentColorCommand extends SnapshotUndoCommand {
+  SetComponentColorCommand({
+    required this.artboardOrdinal,
+    required this.componentIndexes,
+    required this.propertyKey,
+    required this.color,
+  }) : assert(componentIndexes.isNotEmpty, 'At least one target required');
+
+  factory SetComponentColorCommand.fromJson(Map<String, dynamic> json) =>
+      SetComponentColorCommand(
+        artboardOrdinal: json['artboardOrdinal'] as int,
+        componentIndexes: [
+          for (final index in json['componentIndexes'] as List) index as int,
+        ],
+        propertyKey: json['propertyKey'] as int,
+        color: json['color'] as int,
+      );
+
+  static const String type = 'setComponentColor';
+
+  final int artboardOrdinal;
+  final List<int> componentIndexes;
+  final int propertyKey;
+
+  /// ARGB value to write.
+  final int color;
+
+  @override
+  String get label => 'Change color';
+
+  @override
+  bool get isMergeable => true;
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final objects = RivHierarchy.componentObjects(
+      context.editor!.raw,
+      artboardOrdinal,
+    );
+
+    var changed = false;
+    for (final componentIndex in componentIndexes) {
+      final object = objects[componentIndex];
+      if (object == null) {
+        return CommandResult.failed(
+          TargetNotFoundFailure('component@$artboardOrdinal:$componentIndex'),
+        );
+      }
+
+      final property = object.property(propertyKey);
+      if (property != null) {
+        if (property.fieldType != RivFieldType.color) {
+          return const CommandResult.failed(
+            InvalidMutationFailure('Property is not a color'),
+          );
+        }
+        if (property.colorValue == color) continue;
+        property.colorValue = color;
+        changed = true;
+      } else {
+        object.properties.add(
+          RivRawProperty(
+            key: propertyKey,
+            fieldType: RivFieldType.color,
+            valueBytes: Uint8List(0),
+          )..colorValue = color,
+        );
+        changed = true;
+      }
+    }
+    return changed
+        ? const CommandResult.success()
+        : const CommandResult.failed(NoChangeFailure());
+  }
+
+  @override
+  EditorCommand? mergeWith(EditorCommand next) {
+    if (next is! SetComponentColorCommand ||
+        next.artboardOrdinal != artboardOrdinal ||
+        next.propertyKey != propertyKey ||
+        next.componentIndexes.length != componentIndexes.length) {
+      return null;
+    }
+    for (var i = 0; i < componentIndexes.length; i++) {
+      if (next.componentIndexes[i] != componentIndexes[i]) return null;
+    }
+    return SetComponentColorCommand(
+      artboardOrdinal: artboardOrdinal,
+      componentIndexes: componentIndexes,
+      propertyKey: propertyKey,
+      color: next.color,
+    )..adoptSnapshotFrom(this);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'artboardOrdinal': artboardOrdinal,
+    'componentIndexes': componentIndexes,
+    'propertyKey': propertyKey,
+    'color': color,
+  };
+}

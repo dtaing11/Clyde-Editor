@@ -20,6 +20,7 @@ class ToolStrip extends StatelessWidget {
     'ellipse': Icons.circle_outlined,
     'polygon': Icons.pentagon_outlined,
     'text': Icons.text_fields,
+    'eyedropper': Icons.colorize,
     'pen': Icons.edit_outlined,
   };
 

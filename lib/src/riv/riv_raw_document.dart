@@ -208,4 +208,16 @@ class RivRawProperty {
     final writer = RivBinaryWriter()..writeFloat32(value);
     valueBytes = writer.takeBytes();
   }
+
+  /// Decodes the value as ARGB. Only valid for [RivFieldType.color].
+  int get colorValue {
+    assert(fieldType == RivFieldType.color);
+    return RivBinaryReader(valueBytes).readUint32();
+  }
+
+  set colorValue(int value) {
+    assert(fieldType == RivFieldType.color);
+    final writer = RivBinaryWriter()..writeUint32(value);
+    valueBytes = writer.takeBytes();
+  }
 }

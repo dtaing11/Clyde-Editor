@@ -7,6 +7,7 @@ import '../../core/tools/tool_controller.dart';
 import 'services/file_service.dart';
 import 'state/editor_state.dart';
 import 'tools/core_tools.dart';
+import 'tools/eyedropper_tool.dart';
 import 'tools/shape_tools.dart';
 import 'tools/text_tool.dart';
 import 'widgets/canvas_panel.dart';
@@ -46,6 +47,7 @@ class _EditorScreenState extends State<EditorScreen> {
         ..register(RectangleTool())
         ..register(EllipseTool())
         ..register(PolygonTool())
+        ..register(EyedropperTool())
         ..register(
           TextTool(
             fontProvider: const BundleFontProvider(),
@@ -90,6 +92,8 @@ class _EditorScreenState extends State<EditorScreen> {
         _toolController.activateByShortcut(LogicalKeyboardKey.keyP),
     const SingleActivator(LogicalKeyboardKey.keyT): () =>
         _toolController.activateByShortcut(LogicalKeyboardKey.keyT),
+    const SingleActivator(LogicalKeyboardKey.keyI): () =>
+        _toolController.activateByShortcut(LogicalKeyboardKey.keyI),
   };
 
   /// Themed content prompt used by the Text tool.

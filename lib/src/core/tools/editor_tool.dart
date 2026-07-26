@@ -7,6 +7,7 @@ import '../model/scene_node_ref.dart';
 import '../services/scene_hit_tester.dart';
 import '../services/selection_service.dart';
 import '../services/view_transform.dart';
+import '../../riv/riv_shape_paints.dart';
 
 /// Everything a tool may read or request during interaction.
 ///
@@ -34,6 +35,10 @@ abstract interface class ToolContext {
   /// Local node translation (nodeX/nodeY) of [ref], or `null` when the
   /// component does not exist or has no spatial data.
   Offset? componentTranslation(SceneNodeRef ref);
+
+  /// Fill paint (SolidColor location + ARGB) of [ref], or `null` when
+  /// the component has no solid fill.
+  RivPaintTarget? fillPaintOf(SceneNodeRef ref);
 
   /// The shared selection (§2.2).
   SelectionService get selection;
