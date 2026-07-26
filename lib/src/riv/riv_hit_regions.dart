@@ -23,7 +23,10 @@ abstract final class RivHitRegions {
       return const [];
     }
 
-    final componentObjects = _componentObjects(document, artboardOrdinal);
+    final componentObjects = RivHierarchy.componentObjects(
+      document,
+      artboardOrdinal,
+    );
     final regions = <SceneHitRegion>[];
     var drawOrder = 0;
 
@@ -55,42 +58,6 @@ abstract final class RivHitRegions {
       visit(child, Offset.zero);
     }
     return regions;
-  }
-
-  /// Raw objects by component index for one artboard.
-  static Map<int, RivRawObject> _componentObjects(
-    RivRawDocument document,
-    int artboardOrdinal,
-  ) {
-    const topLevelTypes = {
-      RivTypeKeys.artboard,
-      RivTypeKeys.backboard,
-      RivTypeKeys.imageAsset,
-      RivTypeKeys.fontAsset,
-      RivTypeKeys.audioAsset,
-      RivTypeKeys.fileAssetContents,
-    };
-
-    final result = <int, RivRawObject>{};
-    var seen = -1;
-    for (var i = 0; i < document.objects.length; i++) {
-      if (document.objects[i].typeKey != RivTypeKeys.artboard) continue;
-      seen++;
-      if (seen != artboardOrdinal) continue;
-
-      var componentIndex = 0;
-      result[componentIndex++] = document.objects[i];
-      for (var j = i + 1; j < document.objects.length; j++) {
-        final object = document.objects[j];
-        if (topLevelTypes.contains(object.typeKey)) break;
-        final isComponent =
-            !RivTypeKeys.animationTypeKeys.contains(object.typeKey) ||
-            RivTypeKeys.interpolatorTypeKeys.contains(object.typeKey);
-        if (isComponent) result[componentIndex++] = object;
-      }
-      break;
-    }
-    return result;
   }
 
   static Offset _translationOf(RivRawObject? object) {

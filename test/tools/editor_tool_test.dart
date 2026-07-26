@@ -38,6 +38,12 @@ final class _TestToolContext implements ToolContext {
 
   @override
   final SelectionService selection = SelectionService();
+
+  /// Translations returned by [componentTranslation], keyed by ref.
+  final Map<SceneNodeRef, Offset> translations = {};
+
+  @override
+  Offset? componentTranslation(SceneNodeRef ref) => translations[ref];
 }
 
 ToolPointerEvent _eventAt(Offset view, {bool secondary = false}) =>

@@ -13,6 +13,9 @@ import '../../../core/services/view_transform.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../core/tools/editor_tool.dart';
 import '../../../core/tools/tool_controller.dart';
+import '../../../core/model/scene_node_ref.dart';
+import '../../../riv/riv_format.dart';
+import '../../../riv/riv_hierarchy.dart';
 import '../../../riv/riv_hit_regions.dart';
 import '../state/editor_state.dart';
 
@@ -114,6 +117,24 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
 
   @override
   SelectionService get selection => widget.state.selection;
+
+  @override
+  Offset? componentTranslation(SceneNodeRef ref) {
+    final raw = widget.state.document?.editor?.raw;
+    if (raw == null) return null;
+    final object = RivHierarchy.componentObjectAt(
+      raw,
+      ref.artboardOrdinal,
+      ref.componentIndex,
+    );
+    if (object == null) return null;
+    final x = object.property(RivPropertyKeys.nodeX);
+    final y = object.property(RivPropertyKeys.nodeY);
+    return Offset(
+      x != null && x.fieldType == RivFieldType.float ? x.floatValue : 0,
+      y != null && y.fieldType == RivFieldType.float ? y.floatValue : 0,
+    );
+  }
 
   // -- Interaction ---------------------------------------------------------
 
