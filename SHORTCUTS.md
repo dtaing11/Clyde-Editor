@@ -26,13 +26,14 @@ added.
 
 | Shortcut | Tool | Behaviour |
 |---|---|---|
-| `V` | Selection | Click selects the topmost shape; drag on empty space draws a marquee |
+| `V` | Selection | Click selects the topmost shape; drag a selected shape to move the whole selection; drag on empty space draws a marquee |
 | `H` | Hand | Drag to pan the canvas |
 | `Z` | Zoom | Click zooms in; right-click zooms out (anchored at the cursor) |
 | `R` | Rectangle | Drag to size; releases creates the shape |
 | `O` | Ellipse | Drag to size; releases creates the shape |
 | `P` | Polygon | Drag to size; creates a pentagon (5 points) |
 | `T` | Text | Click to place; a dialog asks for the content |
+| `I` | Eyedropper | Click a shape to sample its fill; applies to selected shapes' fills (or just samples when nothing is selected) |
 
 ## Selection modifiers
 
