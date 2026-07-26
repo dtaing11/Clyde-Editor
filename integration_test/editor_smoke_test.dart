@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -16,12 +15,12 @@ import 'package:rive_editor/src/features/editor/widgets/scene_hierarchy_panel.da
 import 'package:rive_editor/src/features/editor/widgets/timeline_panel.dart';
 
 /// End-to-end check on the real macOS runner: the editor boots, the native
-/// Rive engine initializes, the demo document loads, and all panels plus a
-/// rendered artboard are present.
+/// Rive engine initializes, a blank document is created, and all panels
+/// plus a rendered artboard are present.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('editor shell loads demo document and renders artboard', (
+  testWidgets('editor shell starts with a blank document and renders it', (
     tester,
   ) async {
     await rive.RiveNative.init();
@@ -39,15 +38,13 @@ void main() {
     expect(find.byType(CanvasPanel), findsOneWidget);
     expect(find.byType(TimelinePanel), findsOneWidget);
 
-    // Demo document decoded and artboard is rendered by the Rive engine.
+    // Blank startup document decoded and rendered by the Rive engine.
     expect(find.byType(rive.RiveArtboardWidget), findsOneWidget);
-    expect(find.text('little_machine.riv'), findsOneWidget);
+    expect(find.text('untitled.riv'), findsOneWidget);
 
-    // Playback transport is wired up.
-    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.play_arrow));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byIcon(Icons.pause), findsOneWidget);
+    // A blank document has no animations yet, so the timeline shows
+    // its empty state instead of transport controls.
+    expect(find.text('Select an animation'), findsOneWidget);
   });
 
   testWidgets('shape command output decodes in the native engine', (
