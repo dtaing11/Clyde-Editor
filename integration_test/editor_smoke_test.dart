@@ -8,6 +8,8 @@ import 'package:rive_editor/src/core/commands/editor_command.dart';
 import 'package:rive_editor/src/core/commands/shape_commands.dart';
 import 'package:rive_editor/src/riv/riv_document_builder.dart';
 import 'package:rive_editor/src/riv/riv_document_editor.dart';
+import 'package:rive_editor/src/riv/riv_format.dart';
+import 'package:rive_editor/src/riv/riv_hierarchy.dart';
 import 'package:rive_editor/src/riv/riv_shape_factory.dart';
 import 'package:rive_editor/src/features/editor/widgets/animations_panel.dart';
 import 'package:rive_editor/src/features/editor/widgets/canvas_panel.dart';
@@ -45,6 +47,80 @@ void main() {
     // A blank document has no animations yet, so the timeline shows
     // its empty state instead of transport controls.
     expect(find.text('Select an animation'), findsOneWidget);
+  });
+
+  testWidgets('draw, select, and drag a shape on the real canvas', (
+    tester,
+  ) async {
+    await rive.RiveNative.init();
+    await tester.pumpWidget(const RiveEditorApp());
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(rive.RiveArtboardWidget).evaluate().isNotEmpty) break;
+    }
+
+    // Activate the Rectangle tool via its tool strip button.
+    await tester.tap(find.byTooltip('Rectangle (R)'));
+    await tester.pump();
+
+    // Draw: drag over the canvas centre.
+    final canvas = find.byType(CanvasPanel);
+    final canvasCentre = tester.getCenter(canvas);
+    final drawGesture = await tester.startGesture(
+      canvasCentre - const Offset(60, 60),
+    );
+    await drawGesture.moveTo(canvasCentre + const Offset(60, 60));
+    await drawGesture.up();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // The document now contains one Shape and the hierarchy shows it.
+    expect(find.text('Rectangle 1'), findsOneWidget);
+
+    // Select with the Selection tool by clicking the shape centre.
+    await tester.tap(find.byTooltip('Select (V)'));
+    await tester.pump();
+    await tester.tapAt(canvasCentre);
+    await tester.pump();
+
+    final canvasWidget = tester.widget<CanvasPanel>(
+      find.byType(CanvasPanel).first,
+    );
+    final editorState = canvasWidget.state;
+    expect(
+      editorState.selection.selected,
+      isNotEmpty,
+      reason: 'clicking a drawn shape must select it',
+    );
+
+    double shapeX() {
+      final raw = editorState.document!.editor!.raw;
+      final objects = RivHierarchy.componentObjects(raw, 0);
+      for (final object in objects.values) {
+        if (object.typeKey == RivTypeKeys.shape) {
+          return object.property(RivPropertyKeys.nodeX)!.floatValue;
+        }
+      }
+      fail('shape not found');
+    }
+
+    final xBefore = shapeX();
+
+    // Drag the selected shape 80px right.
+    final moveGesture = await tester.startGesture(canvasCentre);
+    await moveGesture.moveTo(canvasCentre + const Offset(40, 0));
+    await moveGesture.moveTo(canvasCentre + const Offset(80, 0));
+    await moveGesture.up();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(
+      shapeX(),
+      greaterThan(xBefore),
+      reason: 'dragging a selected shape must move it',
+    );
   });
 
   testWidgets('shape command output decodes in the native engine', (

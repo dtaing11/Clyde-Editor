@@ -131,6 +131,11 @@ abstract final class RivDocumentBuilder {
     writer.writeFloat32(width);
     writer.writeVarUint(RivPropertyKeys.layoutHeight);
     writer.writeFloat32(height);
+    // Artboards clip their content to the frame, like every artboard
+    // the Rive exporter produces (bool serialises as a single byte,
+    // identical to varuint 1).
+    writer.writeVarUint(RivPropertyKeys.layoutClip);
+    writer.writeVarUint(1);
     writer.writeVarUint(0);
 
     if (backgroundColor != null) {

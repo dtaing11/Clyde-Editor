@@ -6,18 +6,26 @@ import 'riv_format.dart';
 import 'riv_hierarchy.dart';
 import 'riv_raw_document.dart';
 
+/// Resolves scene-space bounds for drawables the raw document cannot
+/// size on its own (text measures via font shaping, so only the engine
+/// knows its extent). Returns `null` when no bounds are available.
+typedef DrawableBoundsResolver =
+    Rect? Function(RivHierarchyNode node, Offset translation);
+
 /// Derives selectable hit regions from a document's raw objects.
 ///
 /// A shape's region combines its node translation (x/y on the Shape)
 /// with its parametric path size (width/height on Rectangle/Ellipse,
-/// centred on the node). Group nodes contribute the union of their
-/// children. Components without spatial data produce no region.
+/// centred on the node). Text and other engine-measured drawables get
+/// their region from [DrawableBoundsResolver]. Components without
+/// spatial data produce no region.
 abstract final class RivHitRegions {
   /// Hit regions for artboard [artboardOrdinal] of [document].
   static List<SceneHitRegion> forArtboard(
     RivRawDocument document,
-    int artboardOrdinal,
-  ) {
+    int artboardOrdinal, {
+    DrawableBoundsResolver? resolveDrawableBounds,
+  }) {
     final trees = RivHierarchy.artboardTrees(document);
     if (artboardOrdinal < 0 || artboardOrdinal >= trees.length) {
       return const [];
@@ -47,6 +55,17 @@ abstract final class RivHitRegions {
             drawOrder: drawOrder++,
           ),
         );
+      } else if (node.typeKey == RivTypeKeys.text) {
+        final bounds = resolveDrawableBounds?.call(node, translation);
+        if (bounds != null) {
+          regions.add(
+            SceneHitRegion(
+              ref: SceneNodeRef(artboardOrdinal, node.componentIndex),
+              bounds: bounds,
+              drawOrder: drawOrder++,
+            ),
+          );
+        }
       }
       for (final child in node.children) {
         visit(child, translation);
