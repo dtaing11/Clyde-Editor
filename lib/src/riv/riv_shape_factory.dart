@@ -34,7 +34,9 @@ abstract final class RivShapeFactory {
   /// Appends a [kind] shape to artboard [artboardOrdinal] of [document].
   ///
   /// [x]/[y] position the shape's node; [width]/[height] size the
-  /// parametric path; [color] is ARGB. [polygonPoints] applies to
+  /// parametric path; [color] is the ARGB fill. Every shape also gets
+  /// a black outline ([strokeColor]/[strokeThickness]) so new shapes
+  /// are visible on any background. [polygonPoints] applies to
   /// [RivShapeKind.polygon] only. Returns `true` on success (fails only
   /// when the artboard does not exist).
   static bool addShape(
@@ -48,6 +50,8 @@ abstract final class RivShapeFactory {
     required double height,
     required int color,
     int polygonPoints = defaultPolygonPoints,
+    int strokeColor = defaultStrokeColor,
+    double strokeThickness = defaultStrokeThickness,
   }) {
     final span = _artboardSpan(document, artboardOrdinal);
     if (span == null) return false;
@@ -66,8 +70,8 @@ abstract final class RivShapeFactory {
       typeKey: kind.pathTypeKey,
       properties: [
         _uintProperty(RivPropertyKeys.componentParentId, shapeIndex),
-        _floatProperty(RivPropertyKeys.layoutWidth, width),
-        _floatProperty(RivPropertyKeys.layoutHeight, height),
+        _floatProperty(RivPropertyKeys.parametricWidth, width),
+        _floatProperty(RivPropertyKeys.parametricHeight, height),
         if (kind == RivShapeKind.polygon)
           _uintProperty(RivPropertyKeys.polygonPoints, polygonPoints),
       ],
@@ -78,11 +82,25 @@ abstract final class RivShapeFactory {
         _uintProperty(RivPropertyKeys.componentParentId, shapeIndex),
       ],
     );
-    final solidColor = RivRawObject(
+    final fillColor = RivRawObject(
       typeKey: RivTypeKeys.solidColor,
       properties: [
         _uintProperty(RivPropertyKeys.componentParentId, shapeIndex + 2),
         _colorProperty(RivPropertyKeys.solidColorValue, color),
+      ],
+    );
+    final stroke = RivRawObject(
+      typeKey: RivTypeKeys.stroke,
+      properties: [
+        _uintProperty(RivPropertyKeys.componentParentId, shapeIndex),
+        _floatProperty(RivPropertyKeys.strokeThickness, strokeThickness),
+      ],
+    );
+    final strokeSolidColor = RivRawObject(
+      typeKey: RivTypeKeys.solidColor,
+      properties: [
+        _uintProperty(RivPropertyKeys.componentParentId, shapeIndex + 4),
+        _colorProperty(RivPropertyKeys.solidColorValue, strokeColor),
       ],
     );
 
@@ -90,13 +108,19 @@ abstract final class RivShapeFactory {
       shape,
       path,
       fill,
-      solidColor,
+      fillColor,
+      stroke,
+      strokeSolidColor,
     ]);
     return true;
   }
 
   /// Default vertex count for new polygons (matches the Rive editor).
   static const int defaultPolygonPoints = 5;
+
+  /// Black outline applied to every new shape.
+  static const int defaultStrokeColor = 0xFF000000;
+  static const double defaultStrokeThickness = 2;
 
   /// Appends a text object with an embedded font to [document].
   ///
