@@ -152,10 +152,8 @@ final class MoveComponentsCommand extends SnapshotUndoCommand {
           ),
         );
       }
-      changed =
-          _setFloat(object, RivPropertyKeys.nodeX, move.x) | changed;
-      changed =
-          _setFloat(object, RivPropertyKeys.nodeY, move.y) | changed;
+      changed = _setFloat(object, RivPropertyKeys.nodeX, move.x) | changed;
+      changed = _setFloat(object, RivPropertyKeys.nodeY, move.y) | changed;
     }
     return changed
         ? const CommandResult.success()
@@ -193,8 +191,10 @@ final class MoveComponentsCommand extends SnapshotUndoCommand {
       if (next.moves[i].componentIndex != moves[i].componentIndex) return null;
     }
     // Keep this command's snapshot (drag start) and the newest positions.
-    return MoveComponentsCommand(artboardOrdinal: artboardOrdinal, moves: next.moves)
-      ..adoptSnapshotFrom(this);
+    return MoveComponentsCommand(
+      artboardOrdinal: artboardOrdinal,
+      moves: next.moves,
+    )..adoptSnapshotFrom(this);
   }
 
   @override

@@ -183,17 +183,17 @@ void main() {
   group('MoveComponentsCommand', () {
     test('moves x and y together with byte-identity undo', () {
       final context = _TestContext(_documentWithShape());
-      final before = context.editor!.raw.serialize();
+      final before = context.editor.raw.serialize();
       final command = MoveComponentsCommand(
         artboardOrdinal: 0,
         moves: const [ComponentMove(componentIndex: 1, x: 320, y: 240)],
       );
       expect(command.execute(context).succeeded, isTrue);
-      expect(_shapeX(context.editor!), 320);
-      expect(_shapeY(context.editor!), 240);
+      expect(_shapeX(context.editor), 320);
+      expect(_shapeY(context.editor), 240);
 
       expect(command.undo(context).succeeded, isTrue);
-      expect(context.editor!.raw.serialize(), before);
+      expect(context.editor.raw.serialize(), before);
     });
 
     test('merges only with identical component sets', () {
@@ -243,5 +243,4 @@ void main() {
       expect(decoded.moves[1].y, 99);
     });
   });
-
 }
