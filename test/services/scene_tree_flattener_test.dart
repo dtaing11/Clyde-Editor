@@ -19,8 +19,16 @@ List<RivHierarchyNode> _sampleTrees() => [
 
 void main() {
   group('SceneTreeFlattener', () {
-    test('collapsed tree shows only roots', () {
+    test('artboard roots start expanded showing their frame tree', () {
       final controller = SceneHierarchyController();
+      final rows = SceneTreeFlattener.flatten(_sampleTrees(), controller);
+      // Topmost-first: D draws above A.
+      expect(rows.map((r) => r.node.name), ['Artboard', 'D', 'A']);
+    });
+
+    test('collapsing the artboard root hides the frame tree', () {
+      final controller = SceneHierarchyController()
+        ..toggleExpanded(const SceneNodeRef(0, 0), defaultExpanded: true);
       final rows = SceneTreeFlattener.flatten(_sampleTrees(), controller);
       expect(rows.map((r) => r.node.name), ['Artboard']);
     });
@@ -31,7 +39,8 @@ void main() {
         ..expand(const SceneNodeRef(0, 1));
       final rows = SceneTreeFlattener.flatten(_sampleTrees(), controller);
 
-      expect(rows.map((r) => r.node.name), ['Artboard', 'A', 'B', 'C', 'D']);
+      // Later siblings draw on top, so the panel lists topmost-first.
+      expect(rows.map((r) => r.node.name), ['Artboard', 'D', 'A', 'C', 'B']);
       final rowB = rows.firstWhere((r) => r.node.name == 'B');
       expect(rowB.depth, 2);
       expect(rowB.ancestorIndices, [0, 1]);
@@ -50,23 +59,24 @@ void main() {
         ..expand(const SceneNodeRef(0, 1));
       final rows = SceneTreeFlattener.flatten(_sampleTrees(), controller);
 
+      // Visual order is Artboard, D, A, C, B; the range D..C covers
+      // D, A, C.
       final range = SceneTreeFlattener.rangeBetween(
         rows,
-        const SceneNodeRef(0, 1), // A
         const SceneNodeRef(0, 4), // D
+        const SceneNodeRef(0, 3), // C
       );
       expect(range, [
-        const SceneNodeRef(0, 1),
-        const SceneNodeRef(0, 2),
-        const SceneNodeRef(0, 3),
         const SceneNodeRef(0, 4),
+        const SceneNodeRef(0, 1),
+        const SceneNodeRef(0, 3),
       ]);
 
       // Reversed anchor/target produces the same set.
       final reversed = SceneTreeFlattener.rangeBetween(
         rows,
+        const SceneNodeRef(0, 3),
         const SceneNodeRef(0, 4),
-        const SceneNodeRef(0, 1),
       );
       expect(reversed, range);
     });

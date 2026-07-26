@@ -13,14 +13,17 @@ export '../../../core/model/scene_node_ref.dart';
 /// Locking is an editor concept (the runtime has no lock flag), so
 /// locks live here and gate structural operations at the state layer.
 class SceneHierarchyController extends ChangeNotifier {
-  final Set<SceneNodeRef> _expanded = {};
+  /// Explicit expansion overrides; nodes absent here use their default
+  /// ([defaultExpanded], true for artboard roots so frames start open).
+  final Map<SceneNodeRef, bool> _expansionOverrides = {};
   final Set<SceneNodeRef> _locked = {};
   String _searchQuery = '';
 
   String get searchQuery => _searchQuery;
   bool get isSearching => _searchQuery.isNotEmpty;
 
-  bool isExpanded(SceneNodeRef ref) => _expanded.contains(ref);
+  bool isExpanded(SceneNodeRef ref, {bool defaultExpanded = false}) =>
+      _expansionOverrides[ref] ?? defaultExpanded;
   bool isLocked(SceneNodeRef ref) => _locked.contains(ref);
 
   /// A node is effectively locked when itself or any ancestor is locked.
@@ -31,13 +34,18 @@ class SceneHierarchyController extends ChangeNotifier {
     );
   }
 
-  void toggleExpanded(SceneNodeRef ref) {
-    _expanded.contains(ref) ? _expanded.remove(ref) : _expanded.add(ref);
+  void toggleExpanded(SceneNodeRef ref, {bool defaultExpanded = false}) {
+    _expansionOverrides[ref] = !isExpanded(
+      ref,
+      defaultExpanded: defaultExpanded,
+    );
     notifyListeners();
   }
 
   void expand(SceneNodeRef ref) {
-    if (_expanded.add(ref)) notifyListeners();
+    if (_expansionOverrides[ref] == true) return;
+    _expansionOverrides[ref] = true;
+    notifyListeners();
   }
 
   void toggleLocked(SceneNodeRef ref) {
@@ -75,11 +83,18 @@ class SceneHierarchyController extends ChangeNotifier {
           SceneNodeRef(artboardOrdinal, remap[ref.componentIndex]!),
     };
 
-    final expanded = migrate(_expanded);
+    final overrides = <SceneNodeRef, bool>{
+      for (final entry in _expansionOverrides.entries)
+        if (entry.key.artboardOrdinal != artboardOrdinal)
+          entry.key: entry.value
+        else if ((remap[entry.key.componentIndex] ?? -1) >= 0)
+          SceneNodeRef(artboardOrdinal, remap[entry.key.componentIndex]!):
+              entry.value,
+    };
     final locked = migrate(_locked);
-    _expanded
+    _expansionOverrides
       ..clear()
-      ..addAll(expanded);
+      ..addAll(overrides);
     _locked
       ..clear()
       ..addAll(locked);
@@ -88,7 +103,7 @@ class SceneHierarchyController extends ChangeNotifier {
 
   /// Resets everything (called when a different document is opened).
   void reset() {
-    _expanded.clear();
+    _expansionOverrides.clear();
     _locked.clear();
     _searchQuery = '';
     notifyListeners();

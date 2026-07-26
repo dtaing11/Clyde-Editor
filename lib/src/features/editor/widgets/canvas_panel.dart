@@ -57,14 +57,31 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
   /// across edits and changes only on real navigation.
   (int, int)? _fittedViewIdentity;
 
+  /// The transform produced by the most recent auto-fit. While the
+  /// current transform still equals it (user hasn't panned/zoomed),
+  /// viewport size changes re-fit; the moment the user touches the
+  /// view, resizes leave it alone.
+  ViewTransform? _lastAutoFit;
+  Size? _lastViewportSize;
+
   @override
   void initState() {
     super.initState();
     widget.toolController.attachContext(this);
+    // Selection outlines and tool previews are drawn on the overlay
+    // from document + selection state, so both must invalidate it:
+    // without this, outlines freeze at their old position after a
+    // move/edit while the content layer shows the new state.
+    widget.state.addListener(_invalidateOverlay);
+    widget.state.selection.addListener(_invalidateOverlay);
   }
+
+  void _invalidateOverlay() => _overlayEpoch.value++;
 
   @override
   void dispose() {
+    widget.state.removeListener(_invalidateOverlay);
+    widget.state.selection.removeListener(_invalidateOverlay);
     widget.toolController.attachContext(null);
     _transform.dispose();
     _overlayEpoch.dispose();
@@ -95,25 +112,61 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
   }
 
   SceneHitTester? _hitTester;
-  int _hitTesterDocumentEpoch = -1;
+  int _hitTesterDocumentRevision = -1;
   int _hitTesterArtboardOrdinal = -1;
 
   /// Rebuilt only when the document or active artboard changes, never
-  /// per pointer event (§2.3: no per-event scene scans).
+  /// per pointer event (§2.3: no per-event scene scans). Keyed on the
+  /// synchronous [EditorState.documentRevision] (bumped before the
+  /// async engine reload) so regions always match the raw bytes a tool
+  /// just mutated.
   @override
   SceneHitTester get hitTester {
     final raw = widget.state.document?.editor?.raw;
     final ordinal = widget.state.activeArtboardOrdinal;
-    final epoch = widget.state.documentEpoch;
+    final revision = widget.state.documentRevision;
     if (raw == null || ordinal < 0) return SceneHitTester(const []);
     if (_hitTester == null ||
-        _hitTesterDocumentEpoch != epoch ||
+        _hitTesterDocumentRevision != revision ||
         _hitTesterArtboardOrdinal != ordinal) {
-      _hitTester = SceneHitTester(RivHitRegions.forArtboard(raw, ordinal));
-      _hitTesterDocumentEpoch = epoch;
+      _hitTester = SceneHitTester(
+        RivHitRegions.forArtboard(
+          raw,
+          ordinal,
+          resolveDrawableBounds: _engineDrawableBounds,
+        ),
+      );
+      _hitTesterDocumentRevision = revision;
       _hitTesterArtboardOrdinal = ordinal;
     }
     return _hitTester!;
+  }
+
+  /// Bounds for engine-measured drawables (text): asks the live
+  /// artboard for the component's shaped world bounds. Falls back to a
+  /// small square at the node's position so freshly created text is
+  /// selectable even before the engine reload lands.
+  Rect? _engineDrawableBounds(RivHierarchyNode node, Offset translation) {
+    const fallbackExtent = 40.0;
+    final artboard = widget.state.activeArtboard;
+    final component = node.name.isEmpty ? null : artboard?.component(node.name);
+    if (component == null) {
+      return Rect.fromCenter(
+        center: translation,
+        width: fallbackExtent,
+        height: fallbackExtent,
+      );
+    }
+    final local = component.localBounds;
+    final world = local.transform(component.worldTransform);
+    if (world.width <= 0 || world.height <= 0) {
+      return Rect.fromCenter(
+        center: translation,
+        width: fallbackExtent,
+        height: fallbackExtent,
+      );
+    }
+    return Rect.fromLTRB(world.left, world.top, world.right, world.bottom);
   }
 
   @override
@@ -192,16 +245,28 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
       widget.state.documentSessionId,
       widget.state.activeArtboardOrdinal,
     );
-    if (identity == _fittedViewIdentity) return;
+    final isNewView = identity != _fittedViewIdentity;
+    // Windows can finish sizing after the first fit. While the view is
+    // still exactly the auto-fit result (user hasn't panned or zoomed),
+    // follow viewport size changes with a fresh fit; once the user
+    // touches the view, resizes leave it alone.
+    final viewportChanged =
+        _lastViewportSize != null && _lastViewportSize != viewportSize;
+    final untouched = _transform.value == _lastAutoFit;
+    _lastViewportSize = viewportSize;
+    if (!isNewView && !(viewportChanged && untouched)) return;
     _fittedViewIdentity = identity;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setViewTransform(
-        ViewTransform.fit(
-          Size(artboard.bounds.width, artboard.bounds.height),
-          viewportSize,
-        ),
+      // Use the live viewport size: the constraints captured during the
+      // first build can predate window sizing and produce a bogus fit.
+      final size = context.size ?? viewportSize;
+      final fitted = ViewTransform.fit(
+        Size(artboard.bounds.width, artboard.bounds.height),
+        size,
       );
+      _lastAutoFit = fitted;
+      setViewTransform(fitted);
     });
   }
 
@@ -250,6 +315,19 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
                           ),
                           if (artboard != null)
                             RepaintBoundary(
+                              child: CustomPaint(
+                                painter: _ArtboardFramePainter(
+                                  transform: _transform,
+                                  name: artboard.name,
+                                  size: Size(
+                                    artboard.bounds.width,
+                                    artboard.bounds.height,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (artboard != null)
+                            RepaintBoundary(
                               child: ClipRect(
                                 child: _TransformedContent(
                                   transform: _transform,
@@ -281,6 +359,7 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
                               child: CustomPaint(
                                 painter: _ToolOverlayPainter(
                                   epoch: _overlayEpoch,
+                                  transform: _transform,
                                   tool: tool,
                                   toolContext: this,
                                 ),
@@ -369,11 +448,17 @@ class _EmptyCanvas extends StatelessWidget {
 class _ToolOverlayPainter extends CustomPainter {
   _ToolOverlayPainter({
     required this.epoch,
+    required this.transform,
     required this.tool,
     required this.toolContext,
-  }) : super(repaint: epoch);
+  }) : super(repaint: Listenable.merge([epoch, transform]));
 
   final ValueListenable<int> epoch;
+
+  /// Selection outlines are projected to view space at paint time, so
+  /// pan/zoom must repaint the overlay or outlines detach from shapes.
+  final ValueListenable<ViewTransform> transform;
+
   final EditorTool? tool;
   final ToolContext toolContext;
 
@@ -470,6 +555,60 @@ class _ZoomButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Figma-style artboard frame: a surface-coloured plate, border, and
+/// name label so the frame is always visible even when the artboard
+/// itself is transparent. Painted under the Rive content; the engine
+/// draws any authored artboard background on top.
+class _ArtboardFramePainter extends CustomPainter {
+  _ArtboardFramePainter({
+    required this.transform,
+    required this.name,
+    required this.size,
+  }) : super(repaint: transform);
+
+  final ValueListenable<ViewTransform> transform;
+  final String name;
+  final Size size;
+
+  static const double _labelPadding = 6;
+
+  @override
+  void paint(Canvas canvas, Size viewSize) {
+    final value = transform.value;
+    final rect = Rect.fromPoints(
+      value.sceneToView(Offset.zero),
+      value.sceneToView(Offset(size.width, size.height)),
+    );
+
+    canvas.drawRect(rect, Paint()..color = EditorTheme.surface);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = EditorTheme.border,
+    );
+
+    // Name label above the top-left corner, fixed size regardless of
+    // zoom (view-space text, like Figma frame titles).
+    final painter = TextPainter(
+      text: TextSpan(
+        text: '$name  ${size.width.round()} × ${size.height.round()}',
+        style: const TextStyle(fontSize: 11, color: EditorTheme.textSecondary),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      Offset(rect.left, rect.top - painter.height - _labelPadding),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ArtboardFramePainter oldDelegate) =>
+      oldDelegate.name != name || oldDelegate.size != size;
 }
 
 /// Dotted background grid that follows the view transform.

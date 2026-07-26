@@ -54,11 +54,17 @@ abstract final class SceneTreeFlattener {
         ),
       );
 
-      // Search shows all matching descendants; otherwise expansion rules.
-      final expanded = controller.isSearching || controller.isExpanded(ref);
+      // Search shows all matching descendants; otherwise expansion
+      // rules. Artboard roots (depth 0) default to expanded so the
+      // frame tree is visible without an extra click.
+      final expanded =
+          controller.isSearching ||
+          controller.isExpanded(ref, defaultExpanded: depth == 0);
       if (!expanded) return;
       final childAncestors = [...ancestors, node.componentIndex];
-      for (final child in node.children) {
+      // Layer order: later siblings draw on top in the runtime, so the
+      // panel lists them topmost-first (like Figma's layer list).
+      for (final child in node.children.reversed) {
         visit(artboardOrdinal, child, depth + 1, childAncestors);
       }
     }

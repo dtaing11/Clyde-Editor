@@ -54,7 +54,10 @@ class SceneHierarchyPanel extends StatelessWidget {
                             depth: row.depth,
                             expanded:
                                 state.scene.isSearching ||
-                                state.scene.isExpanded(row.ref),
+                                state.scene.isExpanded(
+                                  row.ref,
+                                  defaultExpanded: row.depth == 0,
+                                ),
                             hasChildren: row.hasChildren,
                           );
                         },
@@ -262,7 +265,10 @@ class _NodeRowState extends State<_NodeRow> {
       locked: _locked,
       hidden: hidden,
       dropHighlight: _dropHighlight,
-      onToggleExpand: () => _scene.toggleExpanded(widget.nodeRef),
+      onToggleExpand: () => _scene.toggleExpanded(
+        widget.nodeRef,
+        defaultExpanded: widget.depth == 0,
+      ),
       onToggleLock: () => _scene.toggleLocked(widget.nodeRef),
       onToggleHide: () =>
           widget.state.setComponentHidden(widget.nodeRef, !hidden),

@@ -68,6 +68,9 @@ abstract final class RivPropertyKeys {
   static const int layoutWidth = 7;
   static const int layoutHeight = 8;
 
+  /// LayoutComponent.clip: content is clipped to the component bounds.
+  static const int layoutClip = 196;
+
   // ParametricPath (Rectangle/Ellipse/Polygon/Star/Triangle)
   static const int parametricWidth = 20;
   static const int parametricHeight = 21;
