@@ -10,8 +10,10 @@ import 'package:rive_editor/src/core/services/view_transform.dart';
 import 'package:rive_editor/src/core/tools/editor_tool.dart';
 import 'package:rive_editor/src/core/tools/tool_controller.dart';
 import 'package:rive_editor/src/features/editor/tools/core_tools.dart';
+import 'package:rive_editor/src/features/editor/tools/eyedropper_tool.dart';
 import 'package:rive_editor/src/features/editor/tools/shape_tools.dart';
 import 'package:rive_editor/src/riv/riv_shape_factory.dart';
+import 'package:rive_editor/src/riv/riv_shape_paints.dart';
 
 /// Records tool requests without any widgets.
 final class _TestToolContext implements ToolContext {
@@ -45,6 +47,12 @@ final class _TestToolContext implements ToolContext {
 
   @override
   Offset? componentTranslation(SceneNodeRef ref) => translations[ref];
+
+  /// Fill paints returned by [fillPaintOf], keyed by ref.
+  final Map<SceneNodeRef, RivPaintTarget> fills = {};
+
+  @override
+  RivPaintTarget? fillPaintOf(SceneNodeRef ref) => fills[ref];
 }
 
 ToolPointerEvent _eventAt(Offset view, {bool secondary = false}) =>
@@ -349,6 +357,59 @@ void _selectionHitTests() {
       final command = context.dispatched.single as MoveComponentsCommand;
       expect(command.moves, hasLength(2));
       expect(context.selection.selected, {region.ref, second.ref});
+    });
+  });
+
+  group('eyedropper tool', () {
+    const source = SceneHitRegion(
+      ref: SceneNodeRef(0, 1),
+      bounds: Rect.fromLTWH(0, 0, 50, 50),
+      drawOrder: 0,
+    );
+    const target = SceneNodeRef(0, 5);
+
+    test('applies the sampled fill to the selection in one command', () {
+      final tool = EyedropperTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [source]);
+      context.fills[source.ref] = const RivPaintTarget(
+        solidColorComponentIndex: 4,
+        color: 0xFFAB12CD,
+      );
+      context.fills[target] = const RivPaintTarget(
+        solidColorComponentIndex: 8,
+        color: 0xFF000000,
+      );
+      context.selection.select([target]);
+
+      tool.onPointerDown(context, _eventAt(const Offset(10, 10)));
+
+      final command = context.dispatched.single as SetComponentColorCommand;
+      expect(command.componentIndexes, [8]);
+      expect(command.color, 0xFFAB12CD);
+    });
+
+    test('with no selection it samples: selects the source shape', () {
+      final tool = EyedropperTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [source]);
+      context.fills[source.ref] = const RivPaintTarget(
+        solidColorComponentIndex: 4,
+        color: 0xFFAB12CD,
+      );
+
+      tool.onPointerDown(context, _eventAt(const Offset(10, 10)));
+      expect(context.dispatched, isEmpty);
+      expect(context.selection.selected, {source.ref});
+    });
+
+    test('click on empty space does nothing', () {
+      final tool = EyedropperTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [source]);
+      tool.onPointerDown(context, _eventAt(const Offset(500, 500)));
+      expect(context.dispatched, isEmpty);
+      expect(context.selection.isEmpty, isTrue);
     });
   });
 }

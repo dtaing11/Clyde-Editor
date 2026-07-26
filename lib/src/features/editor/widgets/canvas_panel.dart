@@ -17,6 +17,7 @@ import '../../../core/model/scene_node_ref.dart';
 import '../../../riv/riv_format.dart';
 import '../../../riv/riv_hierarchy.dart';
 import '../../../riv/riv_hit_regions.dart';
+import '../../../riv/riv_shape_paints.dart';
 import '../state/editor_state.dart';
 
 /// Center canvas composed of the three layers required by §2.3:
@@ -117,6 +118,13 @@ class _CanvasPanelState extends State<CanvasPanel> implements ToolContext {
 
   @override
   SelectionService get selection => widget.state.selection;
+
+  @override
+  RivPaintTarget? fillPaintOf(SceneNodeRef ref) {
+    final raw = widget.state.document?.editor?.raw;
+    if (raw == null) return null;
+    return RivShapePaints.fillOf(raw, ref.artboardOrdinal, ref.componentIndex);
+  }
 
   @override
   Offset? componentTranslation(SceneNodeRef ref) {

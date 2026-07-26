@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/editor_theme.dart';
+import 'color_picker.dart';
 
 /// Result of the new-artboard dialog.
 final class ArtboardSpec {
@@ -61,15 +62,6 @@ class _ArtboardSpecDialogState extends State<_ArtboardSpecDialog> {
     _height.dispose();
     _hex.dispose();
     super.dispose();
-  }
-
-  /// Parses `RRGGBB` or `AARRGGBB` (with optional leading #) to ARGB.
-  static int? parseHexColor(String input) {
-    final cleaned = input.trim().replaceFirst('#', '');
-    if (cleaned.length != 6 && cleaned.length != 8) return null;
-    final value = int.tryParse(cleaned, radix: 16);
-    if (value == null) return null;
-    return cleaned.length == 6 ? 0xFF000000 | value : value;
   }
 
   void _submit() {

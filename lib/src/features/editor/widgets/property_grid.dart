@@ -5,7 +5,10 @@ import '../../../core/model/property_metadata.dart';
 import '../../../core/model/scene_node_ref.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../riv/riv_format.dart';
+import '../../../riv/riv_hierarchy.dart';
 import '../../../riv/riv_raw_document.dart';
+import '../../../riv/riv_shape_paints.dart';
+import '../../../shared/widgets/color_picker.dart';
 import '../state/editor_state.dart';
 
 /// Property grid generated from [PropertyMetadataRegistry] (§2.5:
@@ -33,7 +36,8 @@ class PropertyGrid extends StatelessWidget {
     if (object == null) return const SizedBox.shrink();
 
     final descriptors = registry.forType(object.typeKey);
-    if (descriptors.isEmpty) {
+    final paintFields = _paintFields();
+    if (descriptors.isEmpty && paintFields.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(10),
         child: Text(
@@ -79,50 +83,76 @@ class PropertyGrid extends StatelessWidget {
               ),
             ),
         ],
+        if (paintFields.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.only(top: 10, bottom: 4),
+            child: Text(
+              'PAINT',
+              style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 0.6,
+                fontWeight: FontWeight.w600,
+                color: EditorTheme.textSecondary,
+              ),
+            ),
+          ),
+          ...paintFields,
+        ],
       ],
     );
+  }
+
+  /// Fill/stroke colour editors for the selected component, resolved
+  /// through [RivShapePaints]; empty when it has no solid paints.
+  List<Widget> _paintFields() {
+    final raw = state.document?.editor?.raw;
+    if (raw == null) return const [];
+
+    Widget? fieldFor(String label, RivPaintTarget? target) {
+      if (target == null) return null;
+      return ColorField(
+        key: ValueKey('${nodeRef.componentIndex}:$label:${target.color}'),
+        label: label,
+        color: target.color,
+        onChanged: (color) => state.dispatch(
+          SetComponentColorCommand(
+            artboardOrdinal: nodeRef.artboardOrdinal,
+            componentIndexes: [target.solidColorComponentIndex],
+            propertyKey: RivPropertyKeys.solidColorValue,
+            color: color,
+          ),
+        ),
+      );
+    }
+
+    return [
+      ?fieldFor(
+        'Fill',
+        RivShapePaints.fillOf(
+          raw,
+          nodeRef.artboardOrdinal,
+          nodeRef.componentIndex,
+        ),
+      ),
+      ?fieldFor(
+        'Stroke',
+        RivShapePaints.strokeOf(
+          raw,
+          nodeRef.artboardOrdinal,
+          nodeRef.componentIndex,
+        ),
+      ),
+    ];
   }
 
   RivRawObject? _componentObject() {
     final raw = state.document?.editor?.raw;
     if (raw == null) return null;
-    final objects = _componentObjectsOf(raw, nodeRef.artboardOrdinal);
-    return nodeRef.componentIndex < objects.length
-        ? objects[nodeRef.componentIndex]
-        : null;
-  }
-
-  static List<RivRawObject> _componentObjectsOf(
-    RivRawDocument document,
-    int artboardOrdinal,
-  ) {
-    const topLevelTypes = {
-      RivTypeKeys.artboard,
-      RivTypeKeys.backboard,
-      RivTypeKeys.imageAsset,
-      RivTypeKeys.fontAsset,
-      RivTypeKeys.audioAsset,
-      RivTypeKeys.fileAssetContents,
-    };
-
-    var seen = -1;
-    for (var i = 0; i < document.objects.length; i++) {
-      if (document.objects[i].typeKey != RivTypeKeys.artboard) continue;
-      seen++;
-      if (seen != artboardOrdinal) continue;
-
-      final components = <RivRawObject>[document.objects[i]];
-      for (var j = i + 1; j < document.objects.length; j++) {
-        final object = document.objects[j];
-        if (topLevelTypes.contains(object.typeKey)) break;
-        final isComponent =
-            !RivTypeKeys.animationTypeKeys.contains(object.typeKey) ||
-            RivTypeKeys.interpolatorTypeKeys.contains(object.typeKey);
-        if (isComponent) components.add(object);
-      }
-      return components;
-    }
-    return const [];
+    return RivHierarchy.componentObjectAt(
+      raw,
+      nodeRef.artboardOrdinal,
+      nodeRef.componentIndex,
+    );
   }
 
   static double _valueOf(RivRawObject object, PropertyDescriptor descriptor) {

@@ -60,5 +60,6 @@ final class EditorCommandCodec {
       SetComponentPropertyCommand.fromJson,
     );
     register(MoveComponentsCommand.type, MoveComponentsCommand.fromJson);
+    register(SetComponentColorCommand.type, SetComponentColorCommand.fromJson);
   }
 }
