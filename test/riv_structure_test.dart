@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rive_editor/src/riv/riv_artboard_editor.dart';
 import 'package:rive_editor/src/riv/riv_document_builder.dart';
+import 'package:rive_editor/src/riv/riv_format.dart';
 import 'package:rive_editor/src/riv/riv_hierarchy.dart';
 import 'package:rive_editor/src/riv/riv_parser.dart';
 import 'package:rive_editor/src/riv/riv_raw_document.dart';
@@ -27,6 +28,29 @@ void main() {
     test('new document round-trips byte-identically', () {
       final bytes = RivDocumentBuilder.newDocument();
       expect(RivRawDocument.parse(bytes).serialize(), bytes);
+    });
+
+    test('new document with background writes fill and solid color', () {
+      final bytes = RivDocumentBuilder.newDocument(backgroundColor: 0xFF102030);
+      final raw = RivRawDocument.parse(bytes);
+      // Backboard + artboard + fill + solid color.
+      expect(raw.objects, hasLength(4));
+      expect(raw.objects[2].typeKey, RivTypeKeys.fill);
+      expect(raw.objects[3].typeKey, RivTypeKeys.solidColor);
+      expect(raw.serialize(), bytes);
+      // Display parser still sees exactly one artboard.
+      expect(RivParser.parse(bytes).artboards, hasLength(1));
+    });
+
+    test('appendArtboard with background parses cleanly', () {
+      final raw = RivRawDocument.parse(RivDocumentBuilder.newDocument());
+      RivDocumentBuilder.appendArtboard(
+        raw,
+        name: 'Tinted',
+        backgroundColor: 0xFFFF0000,
+      );
+      final model = RivParser.parse(raw.serialize());
+      expect(model.artboards.map((a) => a.name), ['Artboard', 'Tinted']);
     });
 
     test('appendArtboard adds a second artboard preserving the first', () {

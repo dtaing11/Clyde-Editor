@@ -366,6 +366,7 @@ final class AddArtboardCommand extends SnapshotUndoCommand {
     required this.name,
     this.width = defaultSize,
     this.height = defaultSize,
+    this.backgroundColor,
   });
 
   factory AddArtboardCommand.fromJson(Map<String, dynamic> json) =>
@@ -373,6 +374,7 @@ final class AddArtboardCommand extends SnapshotUndoCommand {
         name: json['name'] as String,
         width: (json['width'] as num).toDouble(),
         height: (json['height'] as num).toDouble(),
+        backgroundColor: json['backgroundColor'] as int?,
       );
 
   static const String type = 'addArtboard';
@@ -381,6 +383,9 @@ final class AddArtboardCommand extends SnapshotUndoCommand {
   final String name;
   final double width;
   final double height;
+
+  /// ARGB background fill; `null` keeps the artboard transparent.
+  final int? backgroundColor;
 
   @override
   String get label => 'Add artboard "$name"';
@@ -392,6 +397,7 @@ final class AddArtboardCommand extends SnapshotUndoCommand {
       name: name,
       width: width,
       height: height,
+      backgroundColor: backgroundColor,
     );
     return const CommandResult.success();
   }
@@ -402,6 +408,7 @@ final class AddArtboardCommand extends SnapshotUndoCommand {
     'name': name,
     'width': width,
     'height': height,
+    'backgroundColor': backgroundColor,
   };
 }
 

@@ -42,7 +42,10 @@ class EditorDocument {
 
     final artboards = <rive.Artboard>[];
     for (var i = 0; ; i++) {
-      final artboard = file.artboardAt(i);
+      // frameOrigin false keeps the artboard at its authored origin so
+      // artboard coordinates equal scene coordinates (the canvas, hit
+      // testing, and tools all assume this).
+      final artboard = file.artboardAt(i, frameOrigin: false);
       if (artboard == null) break;
       artboards.add(artboard);
     }

@@ -16,10 +16,13 @@ abstract final class RivDocumentBuilder {
   static const int minorVersion = 0;
 
   /// Builds a blank document: a backboard plus one artboard.
+  ///
+  /// [backgroundColor] is ARGB; `null` leaves the artboard transparent.
   static Uint8List newDocument({
     String artboardName = 'Artboard',
     double width = 500,
     double height = 500,
+    int? backgroundColor,
   }) {
     final writer = RivBinaryWriter();
     _writeHeader(writer);
@@ -28,22 +31,24 @@ abstract final class RivDocumentBuilder {
     writer.writeVarUint(RivTypeKeys.backboard);
     writer.writeVarUint(0);
 
-    _writeArtboard(writer, artboardName, width, height);
+    _writeArtboard(writer, artboardName, width, height, backgroundColor);
     return writer.takeBytes();
   }
 
   /// Appends a new artboard to [document].
   ///
   /// Artboards are top-level objects; appending at the end of the stream
-  /// keeps all existing artboard object spans intact.
+  /// keeps all existing artboard object spans intact. [backgroundColor]
+  /// is ARGB; `null` leaves the artboard transparent.
   static void appendArtboard(
     RivRawDocument document, {
     required String name,
     double width = 500,
     double height = 500,
+    int? backgroundColor,
   }) {
     final writer = RivBinaryWriter();
-    _writeArtboard(writer, name, width, height);
+    _writeArtboard(writer, name, width, height, backgroundColor);
     final objects = RivRawDocument.parse(
       _withHeader(writer.takeBytes()),
     ).objects;
@@ -117,6 +122,7 @@ abstract final class RivDocumentBuilder {
     String name,
     double width,
     double height,
+    int? backgroundColor,
   ) {
     writer.writeVarUint(RivTypeKeys.artboard);
     writer.writeVarUint(RivPropertyKeys.componentName);
@@ -126,6 +132,22 @@ abstract final class RivDocumentBuilder {
     writer.writeVarUint(RivPropertyKeys.layoutHeight);
     writer.writeFloat32(height);
     writer.writeVarUint(0);
+
+    if (backgroundColor != null) {
+      // The artboard is a ShapePaintContainer: a Fill parented to it
+      // (component 0) with a SolidColor paints the background.
+      writer.writeVarUint(RivTypeKeys.fill);
+      writer.writeVarUint(RivPropertyKeys.componentParentId);
+      writer.writeVarUint(0);
+      writer.writeVarUint(0);
+
+      writer.writeVarUint(RivTypeKeys.solidColor);
+      writer.writeVarUint(RivPropertyKeys.componentParentId);
+      writer.writeVarUint(1);
+      writer.writeVarUint(RivPropertyKeys.solidColorValue);
+      writer.writeUint32(backgroundColor);
+      writer.writeVarUint(0);
+    }
   }
 
   static RivRawProperty _stringProperty(int key, String value) {
