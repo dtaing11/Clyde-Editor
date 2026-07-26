@@ -114,6 +114,50 @@ abstract final class RivHierarchy {
     return trees;
   }
 
+  /// Raw objects of artboard [artboardOrdinal] keyed by component index
+  /// (the same index space used by parent ids and keyed objects).
+  static Map<int, RivRawObject> componentObjects(
+    RivRawDocument document,
+    int artboardOrdinal,
+  ) {
+    const topLevelTypes = {
+      RivTypeKeys.artboard,
+      RivTypeKeys.backboard,
+      RivTypeKeys.imageAsset,
+      RivTypeKeys.fontAsset,
+      RivTypeKeys.audioAsset,
+      RivTypeKeys.fileAssetContents,
+    };
+
+    final result = <int, RivRawObject>{};
+    var seen = -1;
+    for (var i = 0; i < document.objects.length; i++) {
+      if (document.objects[i].typeKey != RivTypeKeys.artboard) continue;
+      seen++;
+      if (seen != artboardOrdinal) continue;
+
+      var componentIndex = 0;
+      result[componentIndex++] = document.objects[i];
+      for (var j = i + 1; j < document.objects.length; j++) {
+        final object = document.objects[j];
+        if (topLevelTypes.contains(object.typeKey)) break;
+        final isComponent =
+            !RivTypeKeys.animationTypeKeys.contains(object.typeKey) ||
+            RivTypeKeys.interpolatorTypeKeys.contains(object.typeKey);
+        if (isComponent) result[componentIndex++] = object;
+      }
+      break;
+    }
+    return result;
+  }
+
+  /// The raw object for one component of an artboard, or `null`.
+  static RivRawObject? componentObjectAt(
+    RivRawDocument document,
+    int artboardOrdinal,
+    int componentIndex,
+  ) => componentObjects(document, artboardOrdinal)[componentIndex];
+
   /// All assets defined in [document], in file order.
   static List<RivAssetInfo> assets(RivRawDocument document) {
     final result = <RivAssetInfo>[];

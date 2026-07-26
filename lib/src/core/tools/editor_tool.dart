@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/services.dart';
 
 import '../commands/editor_command.dart';
+import '../model/scene_node_ref.dart';
 import '../services/scene_hit_tester.dart';
 import '../services/selection_service.dart';
 import '../services/view_transform.dart';
@@ -29,6 +30,10 @@ abstract interface class ToolContext {
 
   /// Hit tester over the active artboard's components (§2.3).
   SceneHitTester get hitTester;
+
+  /// Local node translation (nodeX/nodeY) of [ref], or `null` when the
+  /// component does not exist or has no spatial data.
+  Offset? componentTranslation(SceneNodeRef ref);
 
   /// The shared selection (§2.2).
   SelectionService get selection;

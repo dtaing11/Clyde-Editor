@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rive_editor/src/core/commands/editor_command.dart';
 import 'package:rive_editor/src/core/model/scene_node_ref.dart';
+import 'package:rive_editor/src/core/commands/property_commands.dart';
 import 'package:rive_editor/src/core/commands/shape_commands.dart';
 import 'package:rive_editor/src/core/services/scene_hit_tester.dart';
 import 'package:rive_editor/src/core/services/selection_service.dart';
@@ -38,6 +39,12 @@ final class _TestToolContext implements ToolContext {
 
   @override
   final SelectionService selection = SelectionService();
+
+  /// Translations returned by [componentTranslation], keyed by ref.
+  final Map<SceneNodeRef, Offset> translations = {};
+
+  @override
+  Offset? componentTranslation(SceneNodeRef ref) => translations[ref];
 }
 
 ToolPointerEvent _eventAt(Offset view, {bool secondary = false}) =>
@@ -288,6 +295,60 @@ void _selectionHitTests() {
       tool.onPointerDown(context, _eventAt(const Offset(200, 200)));
       tool.onPointerUp(context, _eventAt(const Offset(210, 210)));
       expect(context.selection.isEmpty, isTrue);
+    });
+
+    test('dragging a selected component dispatches mergeable moves', () {
+      final tool = SelectionTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [region]);
+      context.translations[region.ref] = const Offset(70, 70);
+
+      tool.onPointerDown(context, _eventAt(const Offset(50, 50)));
+      tool.onPointerMove(context, _eventAt(const Offset(80, 60)));
+      tool.onPointerUp(context, _eventAt(const Offset(80, 60)));
+
+      expect(context.dispatched, hasLength(1));
+      final command = context.dispatched.single as MoveComponentsCommand;
+      expect(command.moves.single.componentIndex, region.ref.componentIndex);
+      // Origin (70,70) plus pointer delta (30,10).
+      expect(command.moves.single.x, 100);
+      expect(command.moves.single.y, 80);
+      expect(command.isMergeable, isTrue);
+    });
+
+    test('a click without travel never dispatches a move', () {
+      final tool = SelectionTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [region]);
+      context.translations[region.ref] = const Offset(70, 70);
+
+      tool.onPointerDown(context, _eventAt(const Offset(50, 50)));
+      tool.onPointerMove(context, _eventAt(const Offset(51, 50)));
+      tool.onPointerUp(context, _eventAt(const Offset(51, 50)));
+      expect(context.dispatched, isEmpty);
+      expect(context.selection.selected, {region.ref});
+    });
+
+    test('dragging moves the whole selection, not just the hit', () {
+      const second = SceneHitRegion(
+        ref: SceneNodeRef(0, 6),
+        bounds: Rect.fromLTWH(140, 40, 40, 40),
+        drawOrder: 1,
+      );
+      final tool = SelectionTool();
+      final context = _TestToolContext()
+        ..hitTester = SceneHitTester(const [region, second]);
+      context.translations[region.ref] = const Offset(70, 70);
+      context.translations[second.ref] = const Offset(160, 60);
+      context.selection.select([region.ref, second.ref]);
+
+      tool.onPointerDown(context, _eventAt(const Offset(50, 50)));
+      tool.onPointerMove(context, _eventAt(const Offset(60, 70)));
+      tool.onPointerUp(context, _eventAt(const Offset(60, 70)));
+
+      final command = context.dispatched.single as MoveComponentsCommand;
+      expect(command.moves, hasLength(2));
+      expect(context.selection.selected, {region.ref, second.ref});
     });
   });
 }

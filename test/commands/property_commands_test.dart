@@ -39,6 +39,13 @@ Uint8List _documentWithShape() {
   return raw.serialize();
 }
 
+double _shapeY(RivDocumentEditor editor) {
+  final shape = editor.raw.objects.firstWhere(
+    (o) => o.typeKey == RivTypeKeys.shape,
+  );
+  return shape.property(RivPropertyKeys.nodeY)!.floatValue;
+}
+
 double _shapeX(RivDocumentEditor editor) {
   final shape = editor.raw.objects.firstWhere(
     (o) => o.typeKey == RivTypeKeys.shape,
@@ -171,6 +178,69 @@ void main() {
       const custom = PropertyDescriptor(key: 1234, label: 'Custom', group: 'X');
       registry.register(77, const [custom]);
       expect(registry.forType(77).single.label, 'Custom');
+    });
+  });
+  group('MoveComponentsCommand', () {
+    test('moves x and y together with byte-identity undo', () {
+      final context = _TestContext(_documentWithShape());
+      final before = context.editor.raw.serialize();
+      final command = MoveComponentsCommand(
+        artboardOrdinal: 0,
+        moves: const [ComponentMove(componentIndex: 1, x: 320, y: 240)],
+      );
+      expect(command.execute(context).succeeded, isTrue);
+      expect(_shapeX(context.editor), 320);
+      expect(_shapeY(context.editor), 240);
+
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.raw.serialize(), before);
+    });
+
+    test('merges only with identical component sets', () {
+      final processor = CommandProcessor(
+        context: _TestContext(_documentWithShape()),
+      );
+      processor.execute(
+        MoveComponentsCommand(
+          artboardOrdinal: 0,
+          moves: const [ComponentMove(componentIndex: 1, x: 150, y: 150)],
+        ),
+      );
+      processor.execute(
+        MoveComponentsCommand(
+          artboardOrdinal: 0,
+          moves: const [ComponentMove(componentIndex: 1, x: 200, y: 175)],
+        ),
+      );
+      // Both drags coalesced: one undo returns to the original position.
+      expect(processor.canUndo, isTrue);
+      processor.undo();
+      expect(processor.canUndo, isFalse);
+    });
+
+    test('fails for a missing component', () {
+      final context = _TestContext(_documentWithShape());
+      final result = MoveComponentsCommand(
+        artboardOrdinal: 0,
+        moves: const [ComponentMove(componentIndex: 99, x: 1, y: 1)],
+      ).execute(context);
+      expect(result.succeeded, isFalse);
+    });
+
+    test('round-trips through the codec', () {
+      final command = MoveComponentsCommand(
+        artboardOrdinal: 2,
+        moves: const [
+          ComponentMove(componentIndex: 4, x: 12.5, y: -3),
+          ComponentMove(componentIndex: 7, x: 0, y: 99),
+        ],
+      );
+      final decoded =
+          EditorCommandCodec.instance.decode(command.toJson())
+              as MoveComponentsCommand;
+      expect(decoded.artboardOrdinal, 2);
+      expect(decoded.moves, hasLength(2));
+      expect(decoded.moves[1].y, 99);
     });
   });
 }
