@@ -1,4 +1,5 @@
 import 'editor_command.dart';
+import 'animation_commands.dart';
 import 'document_commands.dart';
 import 'property_commands.dart';
 import 'shape_commands.dart';
@@ -61,5 +62,7 @@ final class EditorCommandCodec {
     );
     register(MoveComponentsCommand.type, MoveComponentsCommand.fromJson);
     register(SetComponentColorCommand.type, SetComponentColorCommand.fromJson);
+    register(AddAnimationCommand.type, AddAnimationCommand.fromJson);
+    register(InsertKeyframeCommand.type, InsertKeyframeCommand.fromJson);
   }
 }

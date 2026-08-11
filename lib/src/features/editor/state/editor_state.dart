@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../core/commands/animation_commands.dart';
 import '../../../core/commands/command_processor.dart';
 import '../../../core/commands/document_commands.dart';
 import '../../../core/commands/editor_command.dart';
@@ -499,6 +500,42 @@ class EditorState extends ChangeNotifier implements DocumentContext {
   }
 
   /// Selects the animation at [index] on the active artboard.
+  /// Creates a new animation on the active artboard and selects it.
+  Future<bool> addAnimation(String name) async {
+    final ordinal = activeArtboardOrdinal;
+    if (ordinal < 0) return false;
+    final countBefore = _animations.length;
+    final ok = await dispatch(
+      AddAnimationCommand(artboardOrdinal: ordinal, name: name),
+    );
+    if (ok && _animations.length > countBefore) {
+      selectAnimation(_animations.length - 1);
+    }
+    return ok;
+  }
+
+  /// Keyframes [propertyKey] of component [objectId] with [value] at
+  /// the current playhead frame of the selected animation.
+  Future<bool> insertKeyframe({
+    required int objectId,
+    required int propertyKey,
+    required double value,
+  }) {
+    final animation = selectedAnimationModel;
+    final ordinal = activeArtboardOrdinal;
+    if (animation == null || ordinal < 0) return Future.value(false);
+    return dispatch(
+      InsertKeyframeCommand(
+        artboardOrdinal: ordinal,
+        animationOrdinal: _selectedAnimationIndex,
+        objectId: objectId,
+        propertyKey: propertyKey,
+        frame: (_currentTime * animation.fps).round(),
+        value: value,
+      ),
+    );
+  }
+
   void selectAnimation(int index) {
     if (index < 0 || index >= _animations.length) return;
     _selectedAnimationIndex = index;
