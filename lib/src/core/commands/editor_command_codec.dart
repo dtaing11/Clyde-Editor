@@ -66,5 +66,10 @@ final class EditorCommandCodec {
     register(InsertKeyframeCommand.type, InsertKeyframeCommand.fromJson);
     register(DeleteKeyframeCommand.type, DeleteKeyframeCommand.fromJson);
     register(SetAnimationUintCommand.type, SetAnimationUintCommand.fromJson);
+    register(SetKeyframeValueCommand.type, SetKeyframeValueCommand.fromJson);
+    register(
+      SetKeyframeInterpolationCommand.type,
+      SetKeyframeInterpolationCommand.fromJson,
+    );
   }
 }

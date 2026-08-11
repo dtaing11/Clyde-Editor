@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../riv/riv_document_model.dart';
 import '../state/editor_state.dart';
+import 'curve_editor.dart';
 import 'editor_panel.dart';
 import 'keyframe_track_list.dart';
 
@@ -72,6 +73,8 @@ class TimelinePanel extends StatelessWidget {
                             ),
                           ),
                         )
+                      : state.showCurveEditor
+                      ? _CurveEditorView(state: state, model: model)
                       : KeyframeTrackList(
                           animation: model,
                           labelWidth: labelGutterWidth,
@@ -97,6 +100,14 @@ class TimelinePanel extends StatelessWidget {
                               : null,
                           onPasteKeyframe: state.pasteKeyframe,
                           canPaste: state.canEdit && state.hasKeyframeClipboard,
+                          onShowCurves: (keyedObject, property) =>
+                              state.showCurvesFor(
+                                objectId: keyedObject.objectId,
+                                propertyKey: property.propertyKey,
+                              ),
+                          onSetInterpolation: state.canEdit
+                              ? state.setKeyframeInterpolation
+                              : null,
                         ),
                 ),
               ],
@@ -388,4 +399,76 @@ class _TimelineRulerPainter extends CustomPainter {
       oldDelegate.duration != duration ||
       oldDelegate.fps != fps ||
       oldDelegate.displayMode != displayMode;
+}
+
+/// Curve editor mode of the timeline: header with a back action and the
+/// curve surface for the selected property track.
+class _CurveEditorView extends StatelessWidget {
+  const _CurveEditorView({required this.state, required this.model});
+
+  final EditorState state;
+  final RivAnimationModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final property = state.curveProperty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 24,
+          child: Row(
+            children: [
+              const SizedBox(width: 4),
+              InkWell(
+                onTap: state.showTracks,
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.arrow_back,
+                    size: 13,
+                    color: EditorTheme.textSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                property == null
+                    ? 'Curve editor'
+                    : 'Curve: ${property.displayName}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: EditorTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: property == null
+              ? const Center(
+                  child: Text(
+                    'Track no longer exists',
+                    style: TextStyle(
+                      color: EditorTheme.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                )
+              : CurveEditor(
+                  property: property,
+                  animation: model,
+                  onRetimeKeyframe: state.canEdit
+                      ? (keyframe, newFrame) =>
+                            state.retimeKeyframe(keyframe, newFrame)
+                      : null,
+                  onSetKeyframeValue: state.canEdit
+                      ? state.setKeyframeValue
+                      : null,
+                ),
+        ),
+      ],
+    );
+  }
 }
