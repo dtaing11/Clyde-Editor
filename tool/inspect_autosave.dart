@@ -11,14 +11,18 @@ void main() {
   for (final artboard in model.artboards) {
     print('artboard: ${artboard.name}');
     for (final animation in artboard.animations) {
-      print('  animation: ${animation.name} fps=${animation.fps} '
-          'duration=${animation.durationFrames} loop=${animation.loop}');
+      print(
+        '  animation: ${animation.name} fps=${animation.fps} '
+        'duration=${animation.durationFrames} loop=${animation.loop}',
+      );
       for (final keyed in animation.keyedObjects) {
         print('    object ${keyed.objectId} (${keyed.objectName})');
         for (final property in keyed.properties) {
           for (final k in property.keyframes) {
-            print('      key ${property.propertyKey} frame=${k.frame} '
-                'value=${k.value}');
+            print(
+              '      key ${property.propertyKey} frame=${k.frame} '
+              'value=${k.value}',
+            );
           }
         }
       }
