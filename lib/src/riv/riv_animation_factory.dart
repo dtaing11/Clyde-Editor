@@ -160,6 +160,147 @@ abstract final class RivAnimationFactory {
     return true;
   }
 
+  /// Makes the keyframe at [rawObjectIndex] cubic with [x1]..[y2] ease
+  /// control points.
+  ///
+  /// Reuses the keyframe's existing CubicEaseInterpolator when it has
+  /// one; otherwise appends a new interpolator at the end of the
+  /// artboard span (no existing component indices shift, and the
+  /// runtime resolves interpolator references after import, so forward
+  /// references are valid). Returns `true` on success.
+  static bool setKeyframeCubic(
+    RivRawDocument document, {
+    required int rawObjectIndex,
+    required double x1,
+    required double y1,
+    required double x2,
+    required double y2,
+  }) {
+    if (rawObjectIndex < 0 || rawObjectIndex >= document.objects.length) {
+      return false;
+    }
+    final keyframe = document.objects[rawObjectIndex];
+    if (!RivTypeKeys.keyFrameTypeKeys.contains(keyframe.typeKey)) {
+      return false;
+    }
+
+    // Locate the owning artboard span.
+    var artboardOrdinal = -1;
+    ({int startRawIndex, int endRawIndex})? span;
+    var seen = -1;
+    for (var i = 0; i < document.objects.length; i++) {
+      if (document.objects[i].typeKey != RivTypeKeys.artboard) continue;
+      seen++;
+      final candidate = _artboardSpan(document, seen);
+      if (candidate != null &&
+          rawObjectIndex > i &&
+          rawObjectIndex < candidate.endRawIndex) {
+        artboardOrdinal = seen;
+        span = candidate;
+        break;
+      }
+    }
+    if (span == null || artboardOrdinal < 0) return false;
+
+    void setFloat(RivRawObject object, int key, double value) {
+      final property = object.property(key);
+      if (property != null) {
+        property.floatValue = value;
+      } else {
+        object.properties.add(_floatProperty(key, value));
+      }
+    }
+
+    // Reuse an existing cubic interpolator when the keyframe has one.
+    final existingId = keyframe.property(
+      RivPropertyKeys.keyFrameInterpolatorId,
+    );
+    if (existingId != null) {
+      final interpolator = _componentAt(document, span, existingId.uintValue);
+      if (interpolator != null &&
+          interpolator.typeKey == RivTypeKeys.cubicEaseInterpolator) {
+        setFloat(interpolator, RivPropertyKeys.cubicX1, x1);
+        setFloat(interpolator, RivPropertyKeys.cubicY1, y1);
+        setFloat(interpolator, RivPropertyKeys.cubicX2, x2);
+        setFloat(interpolator, RivPropertyKeys.cubicY2, y2);
+        _setKeyframeUint(
+          keyframe,
+          RivPropertyKeys.keyFrameInterpolationType,
+          2,
+        );
+        return true;
+      }
+    }
+
+    // Append a fresh interpolator at the end of the artboard span: it
+    // takes the next component index and shifts nothing.
+    final interpolatorIndex = _componentCount(document, span);
+    document.objects.insert(
+      span.endRawIndex,
+      RivRawObject(
+        typeKey: RivTypeKeys.cubicEaseInterpolator,
+        properties: [
+          _floatProperty(RivPropertyKeys.cubicX1, x1),
+          _floatProperty(RivPropertyKeys.cubicY1, y1),
+          _floatProperty(RivPropertyKeys.cubicX2, x2),
+          _floatProperty(RivPropertyKeys.cubicY2, y2),
+        ],
+      ),
+    );
+    _setKeyframeUint(keyframe, RivPropertyKeys.keyFrameInterpolationType, 2);
+    _setKeyframeUint(
+      keyframe,
+      RivPropertyKeys.keyFrameInterpolatorId,
+      interpolatorIndex,
+    );
+    return true;
+  }
+
+  static void _setKeyframeUint(RivRawObject object, int key, int value) {
+    final property = object.property(key);
+    if (property != null) {
+      property.uintValue = value;
+    } else {
+      object.properties.add(_uintProperty(key, value));
+    }
+  }
+
+  /// The raw object occupying component index [componentIndex] of the
+  /// artboard [span], or `null`.
+  static RivRawObject? _componentAt(
+    RivRawDocument document,
+    ({int startRawIndex, int endRawIndex}) span,
+    int componentIndex,
+  ) {
+    var index = 0;
+    for (var i = span.startRawIndex; i < span.endRawIndex; i++) {
+      final object = document.objects[i];
+      final isComponent =
+          !RivTypeKeys.animationTypeKeys.contains(object.typeKey) ||
+          RivTypeKeys.interpolatorTypeKeys.contains(object.typeKey);
+      if (!isComponent) continue;
+      if (index == componentIndex) return object;
+      index++;
+    }
+    return null;
+  }
+
+  /// Number of component slots consumed inside [span].
+  static int _componentCount(
+    RivRawDocument document,
+    ({int startRawIndex, int endRawIndex}) span,
+  ) {
+    var count = 0;
+    for (var i = span.startRawIndex; i < span.endRawIndex; i++) {
+      final object = document.objects[i];
+      final isComponent =
+          !RivTypeKeys.animationTypeKeys.contains(object.typeKey) ||
+          RivTypeKeys.interpolatorTypeKeys.contains(object.typeKey);
+      if (isComponent) count++;
+    }
+    return count;
+  }
+
   /// Sets a uint property on animation [animationOrdinal] of artboard
   /// [artboardOrdinal] (loop mode, fps, duration). Returns `true` when
   /// the animation exists.

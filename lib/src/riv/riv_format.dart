@@ -57,6 +57,9 @@ abstract final class RivTypeKeys {
   /// (see `keyframe_interpolator.cpp`), so they consume object indices.
   static const Set<int> interpolatorTypeKeys = {28, 138, 139, 163, 174, 175};
 
+  /// CubicEaseInterpolator (css-style bezier ease).
+  static const int cubicEaseInterpolator = 28;
+
   /// All KeyFrame subtypes (double, color, id, bool, string, uint).
   static const Set<int> keyFrameTypeKeys = {30, 37, 50, 84, 142, 450};
 }
@@ -96,6 +99,12 @@ abstract final class RivPropertyKeys {
   static const int keyFrameFrame = 67;
   static const int keyFrameInterpolationType = 68;
   static const int keyFrameInterpolatorId = 69;
+
+  /// CubicInterpolator bezier control points.
+  static const int cubicX1 = 63;
+  static const int cubicY1 = 64;
+  static const int cubicX2 = 65;
+  static const int cubicY2 = 66;
   static const int keyFrameDoubleValue = 70;
 
   // Assets

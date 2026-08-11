@@ -61,6 +61,16 @@ class RivParser {
           if (context != null &&
               (!RivTypeKeys.animationTypeKeys.contains(object.typeKey) ||
                   RivTypeKeys.interpolatorTypeKeys.contains(object.typeKey))) {
+            if (object.typeKey == RivTypeKeys.cubicEaseInterpolator) {
+              context.registerCubicEase(
+                RivCubicEase(
+                  x1: _float(object, RivPropertyKeys.cubicX1) ?? 0.42,
+                  y1: _float(object, RivPropertyKeys.cubicY1) ?? 0,
+                  x2: _float(object, RivPropertyKeys.cubicX2) ?? 0.58,
+                  y2: _float(object, RivPropertyKeys.cubicY2) ?? 1,
+                ),
+              );
+            }
             context.registerComponent(_name(object));
           }
       }
@@ -72,6 +82,13 @@ class RivParser {
           final name = artboard.componentNames[keyedObject.objectId];
           if (name != null && name.isNotEmpty) {
             keyedObject.resolveName(name);
+          }
+          for (final property in keyedObject.properties) {
+            for (final keyframe in property.keyframes) {
+              if (keyframe.interpolatorId >= 0) {
+                keyframe.cubic = artboard.cubicEases[keyframe.interpolatorId];
+              }
+            }
           }
         }
       }
@@ -151,6 +168,8 @@ class RivParser {
           ? _float(object, RivPropertyKeys.keyFrameDoubleValue)
           : null,
       rawObjectIndex: rawObjectIndex,
+      interpolatorId:
+          _uint(object, RivPropertyKeys.keyFrameInterpolatorId) ?? -1,
     );
   }
 }
@@ -169,6 +188,12 @@ class _ParseContext {
   void registerComponent(String name) {
     artboard.componentNames[_componentIndex] = name;
     _componentIndex++;
+  }
+
+  /// Records the cubic ease of the interpolator that occupies the
+  /// *next* component slot (call before [registerComponent]).
+  void registerCubicEase(RivCubicEase ease) {
+    artboard.cubicEases[_componentIndex] = ease;
   }
 
   void beginAnimation(RivAnimationModel animation) {

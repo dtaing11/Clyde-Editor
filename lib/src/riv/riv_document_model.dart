@@ -28,6 +28,9 @@ class RivArtboardModel {
   /// Component names by artboard object index, used to resolve
   /// [RivKeyedObjectModel.objectId] to a display name.
   final Map<int, String> componentNames = {};
+
+  /// Cubic ease control points by interpolator component index.
+  final Map<int, RivCubicEase> cubicEases = {};
 }
 
 /// A linear animation with its keyed object tree.
@@ -120,11 +123,12 @@ enum RivInterpolationType {
 
 /// A single keyframe on a property track.
 class RivKeyFrameModel {
-  const RivKeyFrameModel({
+  RivKeyFrameModel({
     required this.frame,
     required this.interpolation,
     this.value,
     this.rawObjectIndex = -1,
+    this.interpolatorId = -1,
   });
 
   /// Position in frames (divide by animation fps for seconds).
@@ -140,5 +144,36 @@ class RivKeyFrameModel {
   /// keyframe back to bytes when editing. `-1` for synthetic keyframes.
   final int rawObjectIndex;
 
+  /// Component index of the referenced interpolator, `-1` when none.
+  final int interpolatorId;
+
+  /// Cubic bezier ease of the referenced interpolator; resolved by the
+  /// parser after all components are known. `null` for non-cubic
+  /// keyframes or unresolved interpolators.
+  RivCubicEase? cubic;
+
   double timeInSeconds(int fps) => fps > 0 ? frame / fps : 0;
+}
+
+/// Control points of a CubicEaseInterpolator (css-style bezier ease).
+final class RivCubicEase {
+  const RivCubicEase({
+    required this.x1,
+    required this.y1,
+    required this.x2,
+    required this.y2,
+  });
+
+  /// Standard ease-in-out (matches the web's `ease-in-out`).
+  static const RivCubicEase easeInOut = RivCubicEase(
+    x1: 0.42,
+    y1: 0,
+    x2: 0.58,
+    y2: 1,
+  );
+
+  final double x1;
+  final double y1;
+  final double x2;
+  final double y2;
 }

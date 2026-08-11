@@ -554,23 +554,36 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     notifyListeners();
   }
 
-  /// Sets a keyframe's interpolation (hold/linear) from the timeline
-  /// context menu.
+  /// Sets a keyframe's interpolation (hold/linear/cubic) from the
+  /// timeline context menu. Cubic applies a standard ease-in-out; its
+  /// control points become editable in the curve editor.
   Future<bool> setKeyframeInterpolation(
     RivKeyFrameModel keyframe,
     RivInterpolationType type,
   ) {
     if (keyframe.rawObjectIndex < 0) return Future.value(false);
-    if (type != RivInterpolationType.hold &&
-        type != RivInterpolationType.linear) {
-      return Future.value(false);
+    switch (type) {
+      case RivInterpolationType.hold || RivInterpolationType.linear:
+        return dispatch(
+          SetKeyframeInterpolationCommand(
+            rawObjectIndex: keyframe.rawObjectIndex,
+            interpolationType: type.id,
+          ),
+        );
+      case RivInterpolationType.cubic:
+        const ease = RivCubicEase.easeInOut;
+        return dispatch(
+          SetKeyframeCubicCommand(
+            rawObjectIndex: keyframe.rawObjectIndex,
+            x1: ease.x1,
+            y1: ease.y1,
+            x2: ease.x2,
+            y2: ease.y2,
+          ),
+        );
+      case RivInterpolationType.cubicValue:
+        return Future.value(false);
     }
-    return dispatch(
-      SetKeyframeInterpolationCommand(
-        rawObjectIndex: keyframe.rawObjectIndex,
-        interpolationType: type.id,
-      ),
-    );
   }
 
   /// Sets a keyframe's value (curve editor vertical drags); mergeable.

@@ -9,7 +9,7 @@ RivAnimationModel _animation() {
   final animation = RivAnimationModel(name: 'A', fps: 60, durationFrames: 60);
   final keyed = RivKeyedObjectModel(objectId: 1, objectName: 'Shape');
   final property = RivKeyedPropertyModel(propertyKey: 13);
-  property.keyframes.addAll(const [
+  property.keyframes.addAll([
     RivKeyFrameModel(
       frame: 0,
       interpolation: RivInterpolationType.linear,
