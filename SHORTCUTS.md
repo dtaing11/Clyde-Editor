@@ -43,6 +43,13 @@ added.
 | `Shift + Click` | Range-select between the anchor and the clicked row (scene tree) |
 | Click empty canvas | Clear the selection |
 
+## Animation
+
+| Shortcut | Action |
+|---|---|
+| `Shift + Cmd/Ctrl + A` | New animation on the active artboard |
+| `K` | Keyframe the selected shape's X/Y at the playhead (creates an animation first when none exists) |
+
 ## Playback
 
 | Shortcut | Action |

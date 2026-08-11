@@ -94,7 +94,19 @@ class _EditorScreenState extends State<EditorScreen> {
         _toolController.activateByShortcut(LogicalKeyboardKey.keyT),
     const SingleActivator(LogicalKeyboardKey.keyI): () =>
         _toolController.activateByShortcut(LogicalKeyboardKey.keyI),
+    // Animation workflow: Cmd/Ctrl+Shift+A new animation, K keyframes
+    // the selection's position at the playhead.
+    const SingleActivator(LogicalKeyboardKey.keyA, meta: true, shift: true):
+        _addAnimationShortcut,
+    const SingleActivator(LogicalKeyboardKey.keyA, control: true, shift: true):
+        _addAnimationShortcut,
+    const SingleActivator(LogicalKeyboardKey.keyK): () =>
+        _state.keyframeSelectionPosition(),
   };
+
+  void _addAnimationShortcut() {
+    _state.addAnimation('Animation ${_state.animations.length + 1}');
+  }
 
   /// Themed content prompt used by the Text tool.
   Future<String?> _requestTextContent() {

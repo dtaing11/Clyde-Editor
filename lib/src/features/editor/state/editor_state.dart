@@ -425,7 +425,14 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     final previousTime = _currentTime;
     final wasPlaying = _isPlaying;
 
-    final doc = await EditorDocument.decode(name, bytes);
+    // Reuse the live editor: commands mutate it in place, and any
+    // mutation dispatched while this decode was in flight must survive.
+    // Re-parsing the snapshot bytes here would silently drop it.
+    final doc = await EditorDocument.decode(
+      name,
+      bytes,
+      reuseEditor: _document?.editor,
+    );
     if (doc == null) return false;
 
     _document?.dispose();
@@ -659,6 +666,48 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     return dispatch(
       DeleteKeyframeCommand(rawObjectIndex: keyframe.rawObjectIndex),
     );
+  }
+
+  /// Keyframes the primary selection's X and Y at the playhead (K
+  /// shortcut). Creates a default animation first when none exists.
+  Future<bool> keyframeSelectionPosition() async {
+    final primary = selection.primary;
+    if (primary == null || primary.artboardOrdinal != activeArtboardOrdinal) {
+      return false;
+    }
+    if (selectedAnimationModel == null) {
+      final created = await addAnimation('Animation ${_animations.length + 1}');
+      if (!created) return false;
+    }
+    final raw = _document?.editor?.raw;
+    if (raw == null) return false;
+    final object = RivHierarchy.componentObjectAt(
+      raw,
+      primary.artboardOrdinal,
+      primary.componentIndex,
+    );
+    if (object == null) return false;
+
+    double floatOf(int key) {
+      final property = object.property(key);
+      return property != null && property.fieldType == RivFieldType.float
+          ? property.floatValue
+          : 0;
+    }
+
+    final x = floatOf(RivPropertyKeys.nodeX);
+    final y = floatOf(RivPropertyKeys.nodeY);
+    final okX = await insertKeyframe(
+      objectId: primary.componentIndex,
+      propertyKey: RivPropertyKeys.nodeX,
+      value: x,
+    );
+    final okY = await insertKeyframe(
+      objectId: primary.componentIndex,
+      propertyKey: RivPropertyKeys.nodeY,
+      value: y,
+    );
+    return okX && okY;
   }
 
   /// Keyframes [propertyKey] of component [objectId] with [value] at
