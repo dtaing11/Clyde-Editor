@@ -756,4 +756,108 @@ void main() {
       expect(RivKeyframeEvaluator.debugCubicEaseT(1, ease), 1);
     });
   });
+  group('TransformKeyframesCommand', () {
+    RivRawDocument keyed() {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      RivAnimationFactory.addAnimation(raw, artboardOrdinal: 0, name: 'A');
+      for (final (frame, value) in [(0, 0.0), (30, 100.0)]) {
+        RivAnimationFactory.insertKeyframe(
+          raw,
+          artboardOrdinal: 0,
+          animationOrdinal: 0,
+          objectId: 1,
+          propertyKey: 13,
+          frame: frame,
+          value: value,
+        );
+      }
+      return raw;
+    }
+
+    List<int> keyframeIndices(RivRawDocument raw) => [
+      for (var i = 0; i < raw.objects.length; i++)
+        if (raw.objects[i].typeKey == RivTypeKeys.keyFrameDouble) i,
+    ];
+
+    test('moves a group atomically with byte-identity undo', () {
+      final context = _TestContext(keyed().serialize());
+      final before = context.editor.raw.serialize();
+      final indices = keyframeIndices(context.editor.raw);
+      final command = TransformKeyframesCommand(
+        moves: [
+          KeyframeMove(rawObjectIndex: indices[0], frame: 10, value: 5),
+          KeyframeMove(rawObjectIndex: indices[1], frame: 40, value: 105),
+        ],
+      );
+      expect(command.execute(context).succeeded, isTrue);
+      final keyframes = RivParser.fromRaw(context.editor.raw)
+          .artboards
+          .single
+          .animations
+          .single
+          .keyedObjects
+          .single
+          .properties
+          .single
+          .keyframes;
+      expect(keyframes.map((k) => k.frame), [10, 40]);
+      expect(keyframes.map((k) => k.value), [5, 105]);
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.raw.serialize(), before);
+    });
+
+    test('rejects the batch when any target is not a keyframe', () {
+      final context = _TestContext(keyed().serialize());
+      final before = context.editor.raw.serialize();
+      final indices = keyframeIndices(context.editor.raw);
+      final result = TransformKeyframesCommand(
+        moves: [
+          KeyframeMove(rawObjectIndex: indices[0], frame: 5, value: 1),
+          KeyframeMove(rawObjectIndex: 0, frame: 5, value: 1), // Backboard
+        ],
+      ).execute(context);
+      expect(result.succeeded, isFalse);
+      expect(
+        context.editor.raw.serialize(),
+        before,
+        reason: 'atomic: a bad batch must not partially apply',
+      );
+    });
+
+    test('merges continuous group drags into one entry', () {
+      final context = _TestContext(keyed().serialize());
+      final processor = CommandProcessor(context: context);
+      final indices = keyframeIndices(context.editor.raw);
+      for (final delta in [5, 10]) {
+        processor.execute(
+          TransformKeyframesCommand(
+            moves: [
+              KeyframeMove(rawObjectIndex: indices[0], frame: delta, value: 0),
+              KeyframeMove(
+                rawObjectIndex: indices[1],
+                frame: 30 + delta,
+                value: 100,
+              ),
+            ],
+          ),
+        );
+      }
+      processor.undo();
+      expect(processor.canUndo, isFalse);
+    });
+
+    test('round-trips through the codec', () {
+      final decoded =
+          EditorCommandCodec.instance.decode(
+                TransformKeyframesCommand(
+                  moves: const [
+                    KeyframeMove(rawObjectIndex: 4, frame: 12, value: 3.5),
+                  ],
+                ).toJson(),
+              )
+              as TransformKeyframesCommand;
+      expect(decoded.moves.single.frame, 12);
+      expect(decoded.moves.single.value, 3.5);
+    });
+  });
 }

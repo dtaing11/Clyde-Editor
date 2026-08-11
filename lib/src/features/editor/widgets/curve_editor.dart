@@ -20,6 +20,7 @@ class CurveEditor extends StatefulWidget {
     this.onRetimeKeyframe,
     this.onSetKeyframeValue,
     this.onSetCubicEase,
+    this.onTransformKeyframes,
   });
 
   final RivKeyedPropertyModel property;
@@ -55,6 +56,11 @@ class CurveEditor extends StatefulWidget {
   final void Function(RivKeyFrameModel keyframe, RivCubicEase ease)?
   onSetCubicEase;
 
+  /// Invoked while a box-selected group of keyframes is dragged; every
+  /// entry carries the keyframe with its new absolute frame/value.
+  final void Function(List<(RivKeyFrameModel, int, double)> moves)?
+  onTransformKeyframes;
+
   @override
   State<CurveEditor> createState() => _CurveEditorState();
 }
@@ -71,6 +77,17 @@ class _CurveEditorState extends State<CurveEditor> {
   /// Cubic segment owner + which handle, when dragging a tangent.
   RivKeyFrameModel? _draggingHandleOf;
   _HandleEnd? _draggingHandleEnd;
+
+  /// Box selection: raw indices of selected keyframes.
+  final Set<int> _selected = {};
+
+  /// Marquee rectangle while dragging on empty space, in view coords.
+  Offset? _marqueeStart;
+  Offset? _marqueeEnd;
+
+  /// Group drag: pointer origin and each member's starting frame/value.
+  Offset? _groupDragStart;
+  Map<int, (int, double)>? _groupOrigins;
 
   List<RivKeyFrameModel> get _numericKeyframes => [
     for (final keyframe in widget.property.keyframes)
@@ -190,6 +207,57 @@ class _CurveEditorState extends State<CurveEditor> {
     widget.onSetCubicEase!(owner, ease);
   }
 
+  void _finishMarquee(Size size) {
+    final start = _marqueeStart;
+    final end = _marqueeEnd;
+    _marqueeStart = null;
+    _marqueeEnd = null;
+    if (start == null || end == null) return;
+    final rect = Rect.fromPoints(start, end);
+    if (rect.width < 3 && rect.height < 3) return;
+    _selected
+      ..clear()
+      ..addAll([
+        for (final keyframe in _numericKeyframes)
+          if (rect.contains(_pointFor(keyframe, size))) keyframe.rawObjectIndex,
+      ]);
+  }
+
+  void _applyGroupDrag(Offset local, Size size) {
+    final start = _groupDragStart;
+    final origins = _groupOrigins;
+    if (start == null ||
+        origins == null ||
+        widget.onTransformKeyframes == null) {
+      return;
+    }
+    final duration = widget.animation.durationFrames;
+    if (duration <= 0) return;
+    final (min, max) = _valueRange;
+    final usable = size.height - 2 * _verticalPadding;
+    if (usable <= 0) return;
+
+    var deltaFrames = (((local.dx - start.dx) / size.width) * duration).round();
+    final deltaValue = -((local.dy - start.dy) / usable) * (max - min);
+
+    // Clamp the frame delta so the whole group stays inside [0, dur].
+    var lowest = duration;
+    var highest = 0;
+    for (final (frame, _) in origins.values) {
+      if (frame < lowest) lowest = frame;
+      if (frame > highest) highest = frame;
+    }
+    deltaFrames = deltaFrames.clamp(-lowest, duration - highest);
+
+    final moves = <(RivKeyFrameModel, int, double)>[];
+    for (final keyframe in _numericKeyframes) {
+      final origin = origins[keyframe.rawObjectIndex];
+      if (origin == null) continue;
+      moves.add((keyframe, origin.$1 + deltaFrames, origin.$2 + deltaValue));
+    }
+    if (moves.isNotEmpty) widget.onTransformKeyframes!(moves);
+  }
+
   RivKeyFrameModel? _hitTest(Offset local, Size size) {
     RivKeyFrameModel? closest;
     var closestDistance = double.infinity;
@@ -289,24 +357,64 @@ class _CurveEditorState extends State<CurveEditor> {
               return;
             }
             final hit = _hitTest(details.localPosition, size);
-            if (hit != null) setState(() => _dragging = hit);
+            if (hit != null) {
+              // Dragging a selected point moves the whole selection.
+              if (_selected.contains(hit.rawObjectIndex) &&
+                  _selected.length > 1 &&
+                  widget.onTransformKeyframes != null) {
+                setState(() {
+                  _groupDragStart = details.localPosition;
+                  _groupOrigins = {
+                    for (final keyframe in _numericKeyframes)
+                      if (_selected.contains(keyframe.rawObjectIndex))
+                        keyframe.rawObjectIndex: (
+                          keyframe.frame,
+                          keyframe.value!,
+                        ),
+                  };
+                });
+                return;
+              }
+              setState(() {
+                _selected.clear();
+                _dragging = hit;
+              });
+              return;
+            }
+            // Empty space: begin a marquee.
+            setState(() {
+              _selected.clear();
+              _marqueeStart = details.localPosition;
+              _marqueeEnd = details.localPosition;
+            });
           },
           onPanUpdate: (details) {
             if (_draggingHandleOf != null) {
               _applyHandleDrag(details.localPosition, size);
+            } else if (_groupDragStart != null) {
+              _applyGroupDrag(details.localPosition, size);
+            } else if (_marqueeStart != null) {
+              setState(() => _marqueeEnd = details.localPosition);
             } else {
               _applyDrag(details.localPosition, size);
             }
           },
           onPanEnd: (_) => setState(() {
+            _finishMarquee(size);
             _dragging = null;
             _draggingHandleOf = null;
             _draggingHandleEnd = null;
+            _groupDragStart = null;
+            _groupOrigins = null;
           }),
           onPanCancel: () => setState(() {
+            _marqueeStart = null;
+            _marqueeEnd = null;
             _dragging = null;
             _draggingHandleOf = null;
             _draggingHandleEnd = null;
+            _groupDragStart = null;
+            _groupOrigins = null;
           }),
           child: CustomPaint(
             size: size,
@@ -318,6 +426,10 @@ class _CurveEditorState extends State<CurveEditor> {
               verticalPadding: _verticalPadding,
               dragging: _dragging,
               showHandles: widget.onSetCubicEase != null,
+              selectedIndices: Set.of(_selected),
+              marquee: _marqueeStart != null && _marqueeEnd != null
+                  ? Rect.fromPoints(_marqueeStart!, _marqueeEnd!)
+                  : null,
             ),
           ),
         );
@@ -336,6 +448,8 @@ class _CurvePainter extends CustomPainter {
     required this.verticalPadding,
     required this.dragging,
     required this.showHandles,
+    required this.selectedIndices,
+    required this.marquee,
   });
 
   final RivKeyedPropertyModel property;
@@ -345,6 +459,8 @@ class _CurvePainter extends CustomPainter {
   final double verticalPadding;
   final RivKeyFrameModel? dragging;
   final bool showHandles;
+  final Set<int> selectedIndices;
+  final Rect? marquee;
 
   double _yFor(double value, Size size) {
     final (min, max) = valueRange;
@@ -466,7 +582,8 @@ class _CurvePainter extends CustomPainter {
       final isDragging =
           identical(keyframe, dragging) ||
           (dragging != null &&
-              keyframe.rawObjectIndex == dragging!.rawObjectIndex);
+              keyframe.rawObjectIndex == dragging!.rawObjectIndex) ||
+          selectedIndices.contains(keyframe.rawObjectIndex);
       canvas.drawCircle(
         centre,
         isDragging ? 6 : 4.5,
@@ -482,6 +599,23 @@ class _CurvePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5
           ..color = EditorTheme.background,
+      );
+    }
+
+    final marqueeRect = marquee;
+    if (marqueeRect != null) {
+      canvas.drawRect(
+        marqueeRect,
+        Paint()
+          ..style = PaintingStyle.fill
+          ..color = const Color(0x2257A5FF),
+      );
+      canvas.drawRect(
+        marqueeRect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = EditorTheme.accent,
       );
     }
   }

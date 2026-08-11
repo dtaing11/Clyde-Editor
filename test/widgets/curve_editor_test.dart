@@ -262,4 +262,62 @@ void main() {
     expect(CurveEditor.colorFor(13), CurveEditor.colorFor(13));
     expect(CurveEditor.colorFor(13) == CurveEditor.colorFor(14), isFalse);
   });
+  testWidgets('box-select then drag moves the whole group', (tester) async {
+    final batches = <List<(RivKeyFrameModel, int, double)>>[];
+    await pump(
+      tester,
+      keys: [(10, 20), (30, 50), (50, 80)],
+      onRetime: (_, _) {},
+      onSetValue: (_, _) {},
+    );
+    // Re-pump with the transform callback (pump helper lacks it).
+    final animation = _animation(keys: [(10, 20), (30, 50), (50, 80)]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EditorTheme.dark(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 600,
+            height: 300,
+            child: CurveEditor(
+              property: animation.keyedObjects.single.properties.single,
+              animation: animation,
+              onRetimeKeyframe: (_, _) {},
+              onSetKeyframeValue: (_, _) {},
+              onTransformKeyframes: batches.add,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final surface = tester.getRect(find.byType(CustomPaint).last);
+    // Marquee over the middle of the view to catch all three points.
+    final marquee = await tester.startGesture(
+      Offset(surface.left + 5, surface.top + 5),
+    );
+    await marquee.moveTo(Offset(surface.right - 5, surface.bottom - 5));
+    await tester.pump();
+    await marquee.up();
+    await tester.pump();
+
+    // Drag the middle point (frame 30 of 60 -> horizontal centre).
+    const pad = 14.0;
+    final usable = surface.height - 2 * pad;
+    // Padded range [14, 86]: value 50 -> t = 36/72 = 0.5.
+    final y = surface.bottom - pad - 0.5 * usable;
+    final drag = await tester.startGesture(
+      Offset(surface.left + surface.width * 0.5, y),
+    );
+    await drag.moveBy(const Offset(50, 0));
+    await tester.pump();
+    await drag.up();
+    await tester.pump();
+
+    expect(batches, isNotEmpty, reason: 'group drag must fire');
+    expect(batches.last, hasLength(3), reason: 'all selected points move');
+    // 50px of 600px over 60 frames = 5 frames; all move together.
+    final frames = [for (final (_, frame, _) in batches.last) frame];
+    expect(frames, [15, 35, 55]);
+  });
 }
