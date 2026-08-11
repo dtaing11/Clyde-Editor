@@ -517,6 +517,37 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     return ok;
   }
 
+  /// Copied keyframe payload: which component property it animates and
+  /// the value to re-key. Paste inserts at the playhead.
+  ({int objectId, int propertyKey, double value})? _keyframeClipboard;
+
+  bool get hasKeyframeClipboard => _keyframeClipboard != null;
+
+  /// Copies a keyframe's target + value for later pasting.
+  void copyKeyframe({
+    required int objectId,
+    required int propertyKey,
+    required double value,
+  }) {
+    _keyframeClipboard = (
+      objectId: objectId,
+      propertyKey: propertyKey,
+      value: value,
+    );
+    notifyListeners();
+  }
+
+  /// Pastes the copied keyframe at the current playhead frame.
+  Future<bool> pasteKeyframe() {
+    final clip = _keyframeClipboard;
+    if (clip == null) return Future.value(false);
+    return insertKeyframe(
+      objectId: clip.objectId,
+      propertyKey: clip.propertyKey,
+      value: clip.value,
+    );
+  }
+
   /// Loop mode of the selected animation (authored value).
   RivLoopMode get loopMode => selectedAnimationModel?.loop ?? RivLoopMode.loop;
 

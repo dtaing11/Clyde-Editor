@@ -19,6 +19,9 @@ class KeyframeTrackList extends StatelessWidget {
     this.onSelectKeyedObject,
     this.onRetimeKeyframe,
     this.onDeleteKeyframe,
+    this.onCopyKeyframe,
+    this.onPasteKeyframe,
+    this.canPaste = false,
   });
 
   final RivAnimationModel animation;
@@ -37,6 +40,21 @@ class KeyframeTrackList extends StatelessWidget {
   /// Invoked when the user chooses Delete from a keyframe's context
   /// menu. When `null`, keyframes cannot be deleted.
   final ValueChanged<RivKeyFrameModel>? onDeleteKeyframe;
+
+  /// Invoked when the user copies a keyframe (receives the owning
+  /// object, its property, and the keyframe).
+  final void Function(
+    RivKeyedObjectModel keyedObject,
+    RivKeyedPropertyModel property,
+    RivKeyFrameModel keyframe,
+  )?
+  onCopyKeyframe;
+
+  /// Invoked when the user pastes the copied keyframe at the playhead.
+  final VoidCallback? onPasteKeyframe;
+
+  /// Whether the keyframe clipboard has content (enables Paste).
+  final bool canPaste;
 
   /// Width reserved on the left for track names, so keyframe positions
   /// align with the shared time ruler above.
@@ -67,6 +85,11 @@ class KeyframeTrackList extends StatelessWidget {
               labelWidth: labelWidth,
               onRetimeKeyframe: onRetimeKeyframe,
               onDeleteKeyframe: onDeleteKeyframe,
+              onCopyKeyframe: onCopyKeyframe == null
+                  ? null
+                  : (keyframe) =>
+                        onCopyKeyframe!(keyedObject, property, keyframe),
+              onPasteKeyframe: canPaste ? onPasteKeyframe : null,
             ),
         ],
       ],
@@ -125,6 +148,8 @@ class _PropertyTrackRow extends StatelessWidget {
     required this.labelWidth,
     required this.onRetimeKeyframe,
     required this.onDeleteKeyframe,
+    required this.onCopyKeyframe,
+    required this.onPasteKeyframe,
   });
 
   final RivKeyedPropertyModel property;
@@ -133,6 +158,8 @@ class _PropertyTrackRow extends StatelessWidget {
   final void Function(RivKeyFrameModel keyframe, int newFrame)?
   onRetimeKeyframe;
   final ValueChanged<RivKeyFrameModel>? onDeleteKeyframe;
+  final ValueChanged<RivKeyFrameModel>? onCopyKeyframe;
+  final VoidCallback? onPasteKeyframe;
 
   @override
   Widget build(BuildContext context) {
@@ -160,6 +187,8 @@ class _PropertyTrackRow extends StatelessWidget {
               durationFrames: animation.durationFrames,
               onRetimeKeyframe: onRetimeKeyframe,
               onDeleteKeyframe: onDeleteKeyframe,
+              onCopyKeyframe: onCopyKeyframe,
+              onPasteKeyframe: onPasteKeyframe,
             ),
           ),
         ],
@@ -176,6 +205,8 @@ class _KeyframeTrackArea extends StatefulWidget {
     required this.durationFrames,
     required this.onRetimeKeyframe,
     required this.onDeleteKeyframe,
+    required this.onCopyKeyframe,
+    required this.onPasteKeyframe,
   });
 
   final RivKeyedPropertyModel property;
@@ -183,6 +214,8 @@ class _KeyframeTrackArea extends StatefulWidget {
   final void Function(RivKeyFrameModel keyframe, int newFrame)?
   onRetimeKeyframe;
   final ValueChanged<RivKeyFrameModel>? onDeleteKeyframe;
+  final ValueChanged<RivKeyFrameModel>? onCopyKeyframe;
+  final VoidCallback? onPasteKeyframe;
 
   @override
   State<_KeyframeTrackArea> createState() => _KeyframeTrackAreaState();
@@ -224,20 +257,42 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
     double width,
   ) async {
     final hit = _hitTest(localPosition.dx, width);
-    if (hit == null) return;
-    final action = await showEditorContextMenu<String>(
-      context: context,
-      globalPosition: globalPosition,
-      entries: const [
-        ContextMenuEntry(
+    final entries = <ContextMenuEntry<String>>[
+      if (hit != null && widget.onCopyKeyframe != null)
+        const ContextMenuEntry(
+          value: 'copy',
+          label: 'Copy keyframe',
+          icon: Icons.copy_outlined,
+        ),
+      if (widget.onPasteKeyframe != null)
+        const ContextMenuEntry(
+          value: 'paste',
+          label: 'Paste at playhead',
+          icon: Icons.content_paste_outlined,
+        ),
+      if (hit != null && widget.onDeleteKeyframe != null)
+        const ContextMenuEntry(
           value: 'delete',
           label: 'Delete keyframe',
           icon: Icons.delete_outline,
           destructive: true,
+          dividerBefore: true,
         ),
-      ],
+    ];
+    if (entries.isEmpty) return;
+    final action = await showEditorContextMenu<String>(
+      context: context,
+      globalPosition: globalPosition,
+      entries: entries,
     );
-    if (action == 'delete') widget.onDeleteKeyframe?.call(hit);
+    switch (action) {
+      case 'copy':
+        widget.onCopyKeyframe?.call(hit!);
+      case 'paste':
+        widget.onPasteKeyframe?.call();
+      case 'delete':
+        widget.onDeleteKeyframe?.call(hit!);
+    }
   }
 
   @override
@@ -248,7 +303,10 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
         final width = constraints.maxWidth;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onSecondaryTapUp: widget.onDeleteKeyframe == null
+          onSecondaryTapUp:
+              (widget.onDeleteKeyframe == null &&
+                  widget.onCopyKeyframe == null &&
+                  widget.onPasteKeyframe == null)
               ? null
               : (details) => _showKeyframeMenu(
                   details.localPosition,

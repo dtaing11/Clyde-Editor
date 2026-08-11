@@ -84,6 +84,19 @@ class TimelinePanel extends StatelessWidget {
                           onDeleteKeyframe: state.canEdit
                               ? state.deleteKeyframe
                               : null,
+                          onCopyKeyframe: state.canEdit
+                              ? (keyedObject, property, keyframe) {
+                                  final value = keyframe.value;
+                                  if (value == null) return;
+                                  state.copyKeyframe(
+                                    objectId: keyedObject.objectId,
+                                    propertyKey: property.propertyKey,
+                                    value: value,
+                                  );
+                                }
+                              : null,
+                          onPasteKeyframe: state.pasteKeyframe,
+                          canPaste: state.canEdit && state.hasKeyframeClipboard,
                         ),
                 ),
               ],
