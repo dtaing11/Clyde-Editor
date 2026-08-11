@@ -100,6 +100,19 @@ class RivKeyedPropertyModel {
 
   final List<RivKeyFrameModel> keyframes = [];
 
+  List<RivKeyFrameModel>? _numericCache;
+
+  /// Keyframes with numeric values, cached: the model is immutable
+  /// after parse (edits rebuild it), so evaluation hot paths (curve
+  /// repaints sample per pixel) avoid re-filtering 10k keyframes.
+  List<RivKeyFrameModel> get numericKeyframes => _numericCache ??= [
+    for (final keyframe in keyframes)
+      if (keyframe.value != null) keyframe,
+  ];
+
+  /// Invalidates [numericKeyframes] after in-place keyframe edits.
+  void invalidateCache() => _numericCache = null;
+
   /// Display name for the track.
   String get displayName =>
       rivAnimatedPropertyNames[propertyKey] ?? 'Property $propertyKey';

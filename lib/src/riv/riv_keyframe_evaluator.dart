@@ -17,33 +17,42 @@ abstract final class RivKeyframeEvaluator {
     double timeSeconds,
     int fps,
   ) {
-    final keyframes = property.keyframes.where((k) => k.value != null).toList();
+    // Cached (no per-call filtering) + binary search: curve repaints
+    // sample per pixel, so this path must stay sublinear for the §2.7
+    // 10k-keyframe scrub budget.
+    final keyframes = property.numericKeyframes;
     if (keyframes.isEmpty || fps <= 0) return null;
 
     final frame = timeSeconds * fps;
     if (frame <= keyframes.first.frame) return keyframes.first.value;
     if (frame >= keyframes.last.frame) return keyframes.last.value;
 
-    // Find the segment [left, right] containing the frame.
-    for (var i = 0; i < keyframes.length - 1; i++) {
-      final left = keyframes[i];
-      final right = keyframes[i + 1];
-      if (frame < left.frame || frame > right.frame) continue;
-
-      if (left.interpolation == RivInterpolationType.hold ||
-          right.frame == left.frame) {
-        return left.value;
+    // Binary search: greatest index with keyframe.frame <= frame.
+    var low = 0;
+    var high = keyframes.length - 1;
+    while (low + 1 < high) {
+      final mid = (low + high) >> 1;
+      if (keyframes[mid].frame <= frame) {
+        low = mid;
+      } else {
+        high = mid;
       }
-      var t = (frame - left.frame) / (right.frame - left.frame);
-      final cubic = left.cubic;
-      if ((left.interpolation == RivInterpolationType.cubic ||
-              left.interpolation == RivInterpolationType.cubicValue) &&
-          cubic != null) {
-        t = _cubicEaseT(t, cubic);
-      }
-      return left.value! + (right.value! - left.value!) * t;
     }
-    return keyframes.last.value;
+    final left = keyframes[low];
+    final right = keyframes[high];
+
+    if (left.interpolation == RivInterpolationType.hold ||
+        right.frame == left.frame) {
+      return left.value;
+    }
+    var t = (frame - left.frame) / (right.frame - left.frame);
+    final cubic = left.cubic;
+    if ((left.interpolation == RivInterpolationType.cubic ||
+            left.interpolation == RivInterpolationType.cubicValue) &&
+        cubic != null) {
+      t = _cubicEaseT(t, cubic);
+    }
+    return left.value! + (right.value! - left.value!) * t;
   }
 
   /// Whether the displayed value is exact. Hold/linear segments always
