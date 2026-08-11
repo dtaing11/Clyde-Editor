@@ -11,6 +11,7 @@ import 'package:rive_editor/src/riv/riv_document_editor.dart';
 import 'package:rive_editor/src/riv/riv_format.dart';
 import 'package:rive_editor/src/riv/riv_raw_document.dart';
 import 'package:rive_editor/src/riv/riv_shape_factory.dart';
+import 'package:rive_editor/src/riv/riv_shape_paints.dart';
 
 final class _TestContext implements DocumentContext {
   _TestContext(Uint8List bytes) : editor = RivDocumentEditor.parse(bytes);
@@ -37,6 +38,13 @@ Uint8List _documentWithShape() {
     color: 0xFF000000,
   );
   return raw.serialize();
+}
+
+double _shapeY(RivDocumentEditor editor) {
+  final shape = editor.raw.objects.firstWhere(
+    (o) => o.typeKey == RivTypeKeys.shape,
+  );
+  return shape.property(RivPropertyKeys.nodeY)!.floatValue;
 }
 
 double _shapeX(RivDocumentEditor editor) {
@@ -171,6 +179,162 @@ void main() {
       const custom = PropertyDescriptor(key: 1234, label: 'Custom', group: 'X');
       registry.register(77, const [custom]);
       expect(registry.forType(77).single.label, 'Custom');
+    });
+  });
+  group('MoveComponentsCommand', () {
+    test('moves x and y together with byte-identity undo', () {
+      final context = _TestContext(_documentWithShape());
+      final before = context.editor.raw.serialize();
+      final command = MoveComponentsCommand(
+        artboardOrdinal: 0,
+        moves: const [ComponentMove(componentIndex: 1, x: 320, y: 240)],
+      );
+      expect(command.execute(context).succeeded, isTrue);
+      expect(_shapeX(context.editor), 320);
+      expect(_shapeY(context.editor), 240);
+
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.raw.serialize(), before);
+    });
+
+    test('merges only with identical component sets', () {
+      final processor = CommandProcessor(
+        context: _TestContext(_documentWithShape()),
+      );
+      processor.execute(
+        MoveComponentsCommand(
+          artboardOrdinal: 0,
+          moves: const [ComponentMove(componentIndex: 1, x: 150, y: 150)],
+        ),
+      );
+      processor.execute(
+        MoveComponentsCommand(
+          artboardOrdinal: 0,
+          moves: const [ComponentMove(componentIndex: 1, x: 200, y: 175)],
+        ),
+      );
+      // Both drags coalesced: one undo returns to the original position.
+      expect(processor.canUndo, isTrue);
+      processor.undo();
+      expect(processor.canUndo, isFalse);
+    });
+
+    test('fails for a missing component', () {
+      final context = _TestContext(_documentWithShape());
+      final result = MoveComponentsCommand(
+        artboardOrdinal: 0,
+        moves: const [ComponentMove(componentIndex: 99, x: 1, y: 1)],
+      ).execute(context);
+      expect(result.succeeded, isFalse);
+    });
+
+    test('round-trips through the codec', () {
+      final command = MoveComponentsCommand(
+        artboardOrdinal: 2,
+        moves: const [
+          ComponentMove(componentIndex: 4, x: 12.5, y: -3),
+          ComponentMove(componentIndex: 7, x: 0, y: 99),
+        ],
+      );
+      final decoded =
+          EditorCommandCodec.instance.decode(command.toJson())
+              as MoveComponentsCommand;
+      expect(decoded.artboardOrdinal, 2);
+      expect(decoded.moves, hasLength(2));
+      expect(decoded.moves[1].y, 99);
+    });
+  });
+  group('SetComponentColorCommand', () {
+    // Factory shape layout: 1=Shape 2=Rectangle 3=Fill 4=SolidColor.
+    const fillSolidColor = 4;
+
+    test('recolors a fill with byte-identity undo', () {
+      final context = _TestContext(_documentWithShape());
+      final before = context.editor.raw.serialize();
+      final command = SetComponentColorCommand(
+        artboardOrdinal: 0,
+        componentIndexes: const [fillSolidColor],
+        propertyKey: RivPropertyKeys.solidColorValue,
+        color: 0xFF00FF00,
+      );
+      expect(command.execute(context).succeeded, isTrue);
+      final paint = RivShapePaints.fillOf(context.editor.raw, 0, 1);
+      expect(paint!.color, 0xFF00FF00);
+
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.raw.serialize(), before);
+    });
+
+    test('rejects non-color properties', () {
+      final context = _TestContext(_documentWithShape());
+      final result = SetComponentColorCommand(
+        artboardOrdinal: 0,
+        componentIndexes: const [1],
+        propertyKey: RivPropertyKeys.nodeX,
+        color: 0xFF000000,
+      ).execute(context);
+      expect(result.succeeded, isFalse);
+    });
+
+    test('merges picker adjustments into one history entry', () {
+      final processor = CommandProcessor(
+        context: _TestContext(_documentWithShape()),
+      );
+      processor.execute(
+        SetComponentColorCommand(
+          artboardOrdinal: 0,
+          componentIndexes: const [fillSolidColor],
+          propertyKey: RivPropertyKeys.solidColorValue,
+          color: 0xFF111111,
+        ),
+      );
+      processor.execute(
+        SetComponentColorCommand(
+          artboardOrdinal: 0,
+          componentIndexes: const [fillSolidColor],
+          propertyKey: RivPropertyKeys.solidColorValue,
+          color: 0xFF222222,
+        ),
+      );
+      processor.undo();
+      expect(processor.canUndo, isFalse);
+    });
+
+    test('round-trips through the codec', () {
+      final command = SetComponentColorCommand(
+        artboardOrdinal: 1,
+        componentIndexes: const [4, 9],
+        propertyKey: RivPropertyKeys.solidColorValue,
+        color: 0x80FF8800,
+      );
+      final decoded =
+          EditorCommandCodec.instance.decode(command.toJson())
+              as SetComponentColorCommand;
+      expect(decoded.componentIndexes, [4, 9]);
+      expect(decoded.color, 0x80FF8800);
+    });
+  });
+
+  group('RivShapePaints', () {
+    test('resolves fill and stroke SolidColors of a factory shape', () {
+      final context = _TestContext(_documentWithShape());
+      final fill = RivShapePaints.fillOf(context.editor.raw, 0, 1);
+      final stroke = RivShapePaints.strokeOf(context.editor.raw, 0, 1);
+      expect(fill, isNotNull);
+      expect(stroke, isNotNull);
+      expect(fill!.color, 0xFF000000);
+      expect(stroke!.color, RivShapeFactory.defaultStrokeColor);
+      expect(
+        fill.solidColorComponentIndex,
+        isNot(stroke.solidColorComponentIndex),
+      );
+    });
+
+    test('returns null for components without paints', () {
+      final context = _TestContext(_documentWithShape());
+      expect(RivShapePaints.fillOf(context.editor.raw, 0, 2), isNull);
+      expect(RivShapePaints.fillOf(context.editor.raw, 0, 99), isNull);
+      expect(RivShapePaints.fillOf(context.editor.raw, 5, 1), isNull);
     });
   });
 }

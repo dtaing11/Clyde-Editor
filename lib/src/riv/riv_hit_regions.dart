@@ -6,24 +6,35 @@ import 'riv_format.dart';
 import 'riv_hierarchy.dart';
 import 'riv_raw_document.dart';
 
+/// Resolves scene-space bounds for drawables the raw document cannot
+/// size on its own (text measures via font shaping, so only the engine
+/// knows its extent). Returns `null` when no bounds are available.
+typedef DrawableBoundsResolver =
+    Rect? Function(RivHierarchyNode node, Offset translation);
+
 /// Derives selectable hit regions from a document's raw objects.
 ///
 /// A shape's region combines its node translation (x/y on the Shape)
 /// with its parametric path size (width/height on Rectangle/Ellipse,
-/// centred on the node). Group nodes contribute the union of their
-/// children. Components without spatial data produce no region.
+/// centred on the node). Text and other engine-measured drawables get
+/// their region from [DrawableBoundsResolver]. Components without
+/// spatial data produce no region.
 abstract final class RivHitRegions {
   /// Hit regions for artboard [artboardOrdinal] of [document].
   static List<SceneHitRegion> forArtboard(
     RivRawDocument document,
-    int artboardOrdinal,
-  ) {
+    int artboardOrdinal, {
+    DrawableBoundsResolver? resolveDrawableBounds,
+  }) {
     final trees = RivHierarchy.artboardTrees(document);
     if (artboardOrdinal < 0 || artboardOrdinal >= trees.length) {
       return const [];
     }
 
-    final componentObjects = _componentObjects(document, artboardOrdinal);
+    final componentObjects = RivHierarchy.componentObjects(
+      document,
+      artboardOrdinal,
+    );
     final regions = <SceneHitRegion>[];
     var drawOrder = 0;
 
@@ -44,6 +55,17 @@ abstract final class RivHitRegions {
             drawOrder: drawOrder++,
           ),
         );
+      } else if (node.typeKey == RivTypeKeys.text) {
+        final bounds = resolveDrawableBounds?.call(node, translation);
+        if (bounds != null) {
+          regions.add(
+            SceneHitRegion(
+              ref: SceneNodeRef(artboardOrdinal, node.componentIndex),
+              bounds: bounds,
+              drawOrder: drawOrder++,
+            ),
+          );
+        }
       }
       for (final child in node.children) {
         visit(child, translation);
@@ -55,42 +77,6 @@ abstract final class RivHitRegions {
       visit(child, Offset.zero);
     }
     return regions;
-  }
-
-  /// Raw objects by component index for one artboard.
-  static Map<int, RivRawObject> _componentObjects(
-    RivRawDocument document,
-    int artboardOrdinal,
-  ) {
-    const topLevelTypes = {
-      RivTypeKeys.artboard,
-      RivTypeKeys.backboard,
-      RivTypeKeys.imageAsset,
-      RivTypeKeys.fontAsset,
-      RivTypeKeys.audioAsset,
-      RivTypeKeys.fileAssetContents,
-    };
-
-    final result = <int, RivRawObject>{};
-    var seen = -1;
-    for (var i = 0; i < document.objects.length; i++) {
-      if (document.objects[i].typeKey != RivTypeKeys.artboard) continue;
-      seen++;
-      if (seen != artboardOrdinal) continue;
-
-      var componentIndex = 0;
-      result[componentIndex++] = document.objects[i];
-      for (var j = i + 1; j < document.objects.length; j++) {
-        final object = document.objects[j];
-        if (topLevelTypes.contains(object.typeKey)) break;
-        final isComponent =
-            !RivTypeKeys.animationTypeKeys.contains(object.typeKey) ||
-            RivTypeKeys.interpolatorTypeKeys.contains(object.typeKey);
-        if (isComponent) result[componentIndex++] = object;
-      }
-      break;
-    }
-    return result;
   }
 
   static Offset _translationOf(RivRawObject? object) {

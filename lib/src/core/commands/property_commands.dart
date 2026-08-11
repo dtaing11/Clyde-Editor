@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../../riv/riv_format.dart';
+import '../../riv/riv_hierarchy.dart';
 import '../../riv/riv_raw_document.dart';
 
 import 'command_result.dart';
@@ -42,7 +43,11 @@ final class SetComponentPropertyCommand extends SnapshotUndoCommand {
 
   @override
   CommandResult mutate(DocumentContext context) {
-    final object = _componentObject(context.editor!.raw);
+    final object = RivHierarchy.componentObjectAt(
+      context.editor!.raw,
+      artboardOrdinal,
+      componentIndex,
+    );
     if (object == null) {
       return CommandResult.failed(
         TargetNotFoundFailure('component@$artboardOrdinal:$componentIndex'),
@@ -72,39 +77,6 @@ final class SetComponentPropertyCommand extends SnapshotUndoCommand {
     return const CommandResult.success();
   }
 
-  RivRawObject? _componentObject(RivRawDocument document) {
-    const topLevelTypes = {
-      RivTypeKeys.artboard,
-      RivTypeKeys.backboard,
-      RivTypeKeys.imageAsset,
-      RivTypeKeys.fontAsset,
-      RivTypeKeys.audioAsset,
-      RivTypeKeys.fileAssetContents,
-    };
-
-    var seen = -1;
-    for (var i = 0; i < document.objects.length; i++) {
-      if (document.objects[i].typeKey != RivTypeKeys.artboard) continue;
-      seen++;
-      if (seen != artboardOrdinal) continue;
-
-      var component = 0;
-      if (componentIndex == 0) return document.objects[i];
-      for (var j = i + 1; j < document.objects.length; j++) {
-        final object = document.objects[j];
-        if (topLevelTypes.contains(object.typeKey)) break;
-        final isComponent =
-            !RivTypeKeys.animationTypeKeys.contains(object.typeKey) ||
-            RivTypeKeys.interpolatorTypeKeys.contains(object.typeKey);
-        if (!isComponent) continue;
-        component++;
-        if (component == componentIndex) return object;
-      }
-      break;
-    }
-    return null;
-  }
-
   @override
   EditorCommand? mergeWith(EditorCommand next) {
     if (next is! SetComponentPropertyCommand ||
@@ -128,5 +100,233 @@ final class SetComponentPropertyCommand extends SnapshotUndoCommand {
     'componentIndex': componentIndex,
     'propertyKey': propertyKey,
     'value': value,
+  };
+}
+
+/// Translates components to absolute node positions (canvas drags).
+///
+/// Carries every dragged component in one command so multi-selection
+/// drags are one undo entry; mergeable so continuous pointer moves
+/// coalesce into a single history item.
+final class MoveComponentsCommand extends SnapshotUndoCommand {
+  MoveComponentsCommand({required this.artboardOrdinal, required this.moves});
+
+  factory MoveComponentsCommand.fromJson(Map<String, dynamic> json) =>
+      MoveComponentsCommand(
+        artboardOrdinal: json['artboardOrdinal'] as int,
+        moves: [
+          for (final move in json['moves'] as List)
+            ComponentMove(
+              componentIndex: (move as Map)['componentIndex'] as int,
+              x: (move['x'] as num).toDouble(),
+              y: (move['y'] as num).toDouble(),
+            ),
+        ],
+      );
+
+  static const String type = 'moveComponents';
+
+  final int artboardOrdinal;
+  final List<ComponentMove> moves;
+
+  @override
+  String get label => moves.length == 1 ? 'Move' : 'Move ${moves.length} items';
+
+  @override
+  bool get isMergeable => true;
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final objects = RivHierarchy.componentObjects(
+      context.editor!.raw,
+      artboardOrdinal,
+    );
+
+    var changed = false;
+    for (final move in moves) {
+      final object = objects[move.componentIndex];
+      if (object == null) {
+        return CommandResult.failed(
+          TargetNotFoundFailure(
+            'component@$artboardOrdinal:${move.componentIndex}',
+          ),
+        );
+      }
+      changed = _setFloat(object, RivPropertyKeys.nodeX, move.x) | changed;
+      changed = _setFloat(object, RivPropertyKeys.nodeY, move.y) | changed;
+    }
+    return changed
+        ? const CommandResult.success()
+        : const CommandResult.failed(NoChangeFailure());
+  }
+
+  static bool _setFloat(RivRawObject object, int key, double value) {
+    final property = object.property(key);
+    if (property != null) {
+      if (property.fieldType != RivFieldType.float ||
+          property.floatValue == value) {
+        return false;
+      }
+      property.floatValue = value;
+      return true;
+    }
+    object.properties.add(
+      RivRawProperty(
+        key: key,
+        fieldType: RivFieldType.float,
+        valueBytes: Uint8List(0),
+      )..floatValue = value,
+    );
+    return true;
+  }
+
+  @override
+  EditorCommand? mergeWith(EditorCommand next) {
+    if (next is! MoveComponentsCommand ||
+        next.artboardOrdinal != artboardOrdinal ||
+        next.moves.length != moves.length) {
+      return null;
+    }
+    for (var i = 0; i < moves.length; i++) {
+      if (next.moves[i].componentIndex != moves[i].componentIndex) return null;
+    }
+    // Keep this command's snapshot (drag start) and the newest positions.
+    return MoveComponentsCommand(
+      artboardOrdinal: artboardOrdinal,
+      moves: next.moves,
+    )..adoptSnapshotFrom(this);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'artboardOrdinal': artboardOrdinal,
+    'moves': [
+      for (final move in moves)
+        {'componentIndex': move.componentIndex, 'x': move.x, 'y': move.y},
+    ],
+  };
+}
+
+/// One component's target position within a [MoveComponentsCommand].
+final class ComponentMove {
+  const ComponentMove({
+    required this.componentIndex,
+    required this.x,
+    required this.y,
+  });
+
+  final int componentIndex;
+  final double x;
+  final double y;
+}
+
+/// Sets one colour on one or more components' colour properties
+/// (fill/stroke SolidColors).
+///
+/// Carries every target in one command so eyedropper application to a
+/// multi-selection is one undo entry; mergeable so continuous picker
+/// adjustments coalesce.
+final class SetComponentColorCommand extends SnapshotUndoCommand {
+  SetComponentColorCommand({
+    required this.artboardOrdinal,
+    required this.componentIndexes,
+    required this.propertyKey,
+    required this.color,
+  }) : assert(componentIndexes.isNotEmpty, 'At least one target required');
+
+  factory SetComponentColorCommand.fromJson(Map<String, dynamic> json) =>
+      SetComponentColorCommand(
+        artboardOrdinal: json['artboardOrdinal'] as int,
+        componentIndexes: [
+          for (final index in json['componentIndexes'] as List) index as int,
+        ],
+        propertyKey: json['propertyKey'] as int,
+        color: json['color'] as int,
+      );
+
+  static const String type = 'setComponentColor';
+
+  final int artboardOrdinal;
+  final List<int> componentIndexes;
+  final int propertyKey;
+
+  /// ARGB value to write.
+  final int color;
+
+  @override
+  String get label => 'Change color';
+
+  @override
+  bool get isMergeable => true;
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final objects = RivHierarchy.componentObjects(
+      context.editor!.raw,
+      artboardOrdinal,
+    );
+
+    var changed = false;
+    for (final componentIndex in componentIndexes) {
+      final object = objects[componentIndex];
+      if (object == null) {
+        return CommandResult.failed(
+          TargetNotFoundFailure('component@$artboardOrdinal:$componentIndex'),
+        );
+      }
+
+      final property = object.property(propertyKey);
+      if (property != null) {
+        if (property.fieldType != RivFieldType.color) {
+          return const CommandResult.failed(
+            InvalidMutationFailure('Property is not a color'),
+          );
+        }
+        if (property.colorValue == color) continue;
+        property.colorValue = color;
+        changed = true;
+      } else {
+        object.properties.add(
+          RivRawProperty(
+            key: propertyKey,
+            fieldType: RivFieldType.color,
+            valueBytes: Uint8List(0),
+          )..colorValue = color,
+        );
+        changed = true;
+      }
+    }
+    return changed
+        ? const CommandResult.success()
+        : const CommandResult.failed(NoChangeFailure());
+  }
+
+  @override
+  EditorCommand? mergeWith(EditorCommand next) {
+    if (next is! SetComponentColorCommand ||
+        next.artboardOrdinal != artboardOrdinal ||
+        next.propertyKey != propertyKey ||
+        next.componentIndexes.length != componentIndexes.length) {
+      return null;
+    }
+    for (var i = 0; i < componentIndexes.length; i++) {
+      if (next.componentIndexes[i] != componentIndexes[i]) return null;
+    }
+    return SetComponentColorCommand(
+      artboardOrdinal: artboardOrdinal,
+      componentIndexes: componentIndexes,
+      propertyKey: propertyKey,
+      color: next.color,
+    )..adoptSnapshotFrom(this);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'artboardOrdinal': artboardOrdinal,
+    'componentIndexes': componentIndexes,
+    'propertyKey': propertyKey,
+    'color': color,
   };
 }

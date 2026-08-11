@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/services.dart';
 
+import '../../../core/commands/property_commands.dart';
 import '../../../core/model/scene_node_ref.dart';
 import '../../../core/services/selection_service.dart';
 import '../../../core/tools/editor_tool.dart';
@@ -9,17 +10,29 @@ import '../../../core/tools/editor_tool.dart';
 /// Selection tool: the default pointer (§2.2/§2.3).
 ///
 /// Click selects the topmost component under the cursor (cmd/ctrl-click
-/// toggles); dragging from empty space draws a marquee that selects
-/// every intersecting component on release.
+/// toggles); dragging a selected component moves the whole selection
+/// (one undo entry per drag); dragging from empty space draws a marquee
+/// that selects every intersecting component on release.
 final class SelectionTool extends EditorTool {
   SelectionTool();
 
   static const String toolId = 'selection';
 
+  /// Pointer travel below this (in view px) counts as a click, not a
+  /// move, so selecting never accidentally nudges a shape.
+  static const double _dragThreshold = 3;
+
   Offset? _marqueeStartView;
   Offset? _marqueeEndView;
   Offset? _marqueeStartScene;
   Offset? _marqueeEndScene;
+
+  /// Drag-to-move state: scene-space grab point and the starting local
+  /// translation of every dragged component.
+  Offset? _dragStartScene;
+  Offset? _dragStartView;
+  bool _dragActive = false;
+  final Map<SceneNodeRef, Offset> _dragOrigins = {};
 
   /// Current marquee rectangle in view coordinates, or `null`.
   Rect? get marqueeRect {
@@ -50,7 +63,16 @@ final class SelectionTool extends EditorTool {
   void onPointerDown(ToolContext context, ToolPointerEvent event) {
     final hit = context.hitTester.hitTest(event.scenePosition);
     if (hit != null) {
-      context.selection.select([hit.ref], mode: _modeOf(event));
+      // Toggle-clicks only adjust selection; plain clicks select (when
+      // needed) and arm a move of everything selected.
+      if (event.isToggleModifierPressed) {
+        context.selection.select([hit.ref], mode: SelectionMode.toggle);
+        return;
+      }
+      if (!context.selection.contains(hit.ref)) {
+        context.selection.select([hit.ref], mode: SelectionMode.replace);
+      }
+      _armDrag(context, event);
       return;
     }
     // Empty space: begin a marquee.
@@ -61,16 +83,64 @@ final class SelectionTool extends EditorTool {
     context.requestOverlayRepaint();
   }
 
+  void _armDrag(ToolContext context, ToolPointerEvent event) {
+    _dragStartScene = event.scenePosition;
+    _dragStartView = event.viewPosition;
+    _dragActive = false;
+    _dragOrigins.clear();
+    for (final ref in context.selection.selected) {
+      final translation = context.componentTranslation(ref);
+      if (translation != null) _dragOrigins[ref] = translation;
+    }
+  }
+
   @override
   void onPointerMove(ToolContext context, ToolPointerEvent event) {
+    if (_dragStartScene != null) {
+      _updateDrag(context, event);
+      return;
+    }
     if (_marqueeStartView == null) return;
     _marqueeEndView = event.viewPosition;
     _marqueeEndScene = event.scenePosition;
     context.requestOverlayRepaint();
   }
 
+  void _updateDrag(ToolContext context, ToolPointerEvent event) {
+    final startScene = _dragStartScene!;
+    if (!_dragActive) {
+      final travel = (event.viewPosition - _dragStartView!).distance;
+      if (travel < _dragThreshold) return;
+      _dragActive = true;
+    }
+    if (_dragOrigins.isEmpty) return;
+
+    final delta = event.scenePosition - startScene;
+    context.dispatch(
+      MoveComponentsCommand(
+        artboardOrdinal: context.activeArtboardOrdinal,
+        moves: [
+          for (final entry in _dragOrigins.entries)
+            ComponentMove(
+              componentIndex: entry.key.componentIndex,
+              x: entry.value.dx + delta.dx,
+              y: entry.value.dy + delta.dy,
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   void onPointerUp(ToolContext context, ToolPointerEvent event) {
+    if (_dragStartScene != null) {
+      _dragStartScene = null;
+      _dragStartView = null;
+      _dragActive = false;
+      _dragOrigins.clear();
+      return;
+    }
+
     final startScene = _marqueeStartScene;
     final endScene = _marqueeEndScene;
     _clearMarquee(context);
@@ -101,6 +171,10 @@ final class SelectionTool extends EditorTool {
     _marqueeEndView = null;
     _marqueeStartScene = null;
     _marqueeEndScene = null;
+    _dragStartScene = null;
+    _dragStartView = null;
+    _dragActive = false;
+    _dragOrigins.clear();
   }
 
   @override

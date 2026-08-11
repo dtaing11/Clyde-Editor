@@ -207,6 +207,13 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     }
   }
 
+  /// Monotonic counter bumped synchronously on every successful raw
+  /// document mutation (dispatch/undo/redo), *before* the async engine
+  /// reload. Caches that must reflect the raw bytes immediately (hit
+  /// testing, overlays) key on this instead of [documentEpoch].
+  int get documentRevision => _documentRevision;
+  int _documentRevision = 0;
+
   /// Dispatches [command] through the processor; on success the engine
   /// is reloaded so playback reflects the new document.
   Future<bool> dispatch(EditorCommand command) async {
@@ -214,7 +221,35 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     if (doc == null) return false;
     if (!commands.execute(command).succeeded) return false;
     _hasUnsavedChanges = true;
-    return _reloadEngine(doc.name, doc.editor!.bytes());
+    _documentRevision++;
+    return _requestEngineReload();
+  }
+
+  bool _engineReloadInFlight = false;
+  bool _engineReloadQueued = false;
+
+  /// Serialises engine reloads so rapid dispatches (e.g. dragging a
+  /// shape) never run concurrent async decodes that race and clobber
+  /// each other. While a reload is in flight, further requests coalesce
+  /// into one trailing reload of the latest bytes.
+  Future<bool> _requestEngineReload() async {
+    if (_engineReloadInFlight) {
+      _engineReloadQueued = true;
+      return true;
+    }
+    _engineReloadInFlight = true;
+    try {
+      var ok = true;
+      do {
+        _engineReloadQueued = false;
+        final doc = _document;
+        if (doc == null) return false;
+        ok = await _reloadEngine(doc.name, doc.editor!.bytes());
+      } while (_engineReloadQueued);
+      return ok;
+    } finally {
+      _engineReloadInFlight = false;
+    }
   }
 
   /// Moves [keyframe] to [newFrame]. Returns `true` on success.
@@ -235,7 +270,8 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     final doc = _document;
     if (doc == null || !commands.undo().succeeded) return false;
     _hasUnsavedChanges = true;
-    return _reloadEngine(doc.name, doc.editor!.bytes());
+    _documentRevision++;
+    return _requestEngineReload();
   }
 
   /// Re-applies the most recently undone command.
@@ -243,7 +279,8 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     final doc = _document;
     if (doc == null || !commands.redo().succeeded) return false;
     _hasUnsavedChanges = true;
-    return _reloadEngine(doc.name, doc.editor!.bytes());
+    _documentRevision++;
+    return _requestEngineReload();
   }
 
   /// Creates a blank document with one artboard.
@@ -430,6 +467,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     _document?.dispose();
     _document = doc;
     _documentEpoch++;
+    _documentRevision++;
     _documentSessionId++;
     _filePath = null;
     commands.clear();
