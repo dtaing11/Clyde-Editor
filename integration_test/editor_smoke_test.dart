@@ -5,6 +5,7 @@ import 'package:rive_native/rive_native.dart' as rive;
 
 import 'package:rive_editor/src/app.dart';
 import 'package:rive_editor/src/core/commands/editor_command.dart';
+import 'package:rive_editor/src/core/commands/animation_commands.dart';
 import 'package:rive_editor/src/core/commands/shape_commands.dart';
 import 'package:rive_editor/src/riv/riv_document_builder.dart';
 import 'package:rive_editor/src/riv/riv_document_editor.dart';
@@ -153,6 +154,74 @@ void main() {
     expect(artboard, isNotNull);
     final component = artboard!.component('EngineRect');
     expect(component, isNotNull, reason: 'shape must exist in the engine');
+    artboard.dispose();
+    file.dispose();
+  });
+
+  testWidgets('animation + keyframe commands decode and play in the engine', (
+    tester,
+  ) async {
+    await rive.RiveNative.init();
+
+    final editor = RivDocumentEditor.parse(RivDocumentBuilder.newDocument());
+    final context = _EngineTestContext(editor);
+    expect(
+      AddShapeCommand(
+        artboardOrdinal: 0,
+        kind: RivShapeKind.rectangle,
+        name: 'Mover',
+        x: 100,
+        y: 100,
+        width: 50,
+        height: 50,
+      ).execute(context).succeeded,
+      isTrue,
+    );
+    expect(
+      AddAnimationCommand(
+        artboardOrdinal: 0,
+        name: 'Slide',
+      ).execute(context).succeeded,
+      isTrue,
+    );
+    // Key nodeX (13) of the Shape (component 1) at frames 0 and 60.
+    for (final (frame, value) in [(0, 100.0), (60, 300.0)]) {
+      expect(
+        InsertKeyframeCommand(
+          artboardOrdinal: 0,
+          animationOrdinal: 0,
+          objectId: 1,
+          propertyKey: 13,
+          frame: frame,
+          value: value,
+        ).execute(context).succeeded,
+        isTrue,
+      );
+    }
+
+    final file = await rive.File.decode(
+      editor.bytes(),
+      riveFactory: rive.Factory.rive,
+    );
+    expect(file, isNotNull, reason: 'engine must accept animated bytes');
+    final artboard = file!.artboardAt(0, frameOrigin: false);
+    final animation = artboard!.animationNamed('Slide');
+    expect(animation, isNotNull, reason: 'animation must exist in the engine');
+
+    // The engine must evaluate the keyframes: x is 100 at t=0 and 200
+    // at t=0.5s (frame 30, halfway between (0,100) and (60,300)).
+    final component = artboard.component('Mover')!;
+    animation!.time = 0;
+    animation.apply();
+    artboard.advance(0);
+    expect(component.x, closeTo(100, 0.5));
+
+    animation.time = 0.5;
+    animation.apply();
+    artboard.advance(0);
+    expect(component.x, closeTo(200, 0.5));
+
+    animation.dispose();
     artboard.dispose();
     file.dispose();
   });

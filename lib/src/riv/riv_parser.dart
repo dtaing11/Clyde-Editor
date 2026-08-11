@@ -84,8 +84,11 @@ class RivParser {
     );
   }
 
-  static String _name(RivRawObject object) {
-    final property = object.property(RivPropertyKeys.componentName);
+  static String _name(
+    RivRawObject object, {
+    int key = RivPropertyKeys.componentName,
+  }) {
+    final property = object.property(key);
     if (property == null || property.fieldType != RivFieldType.string) {
       return '';
     }
@@ -124,7 +127,8 @@ class RivParser {
 
   static RivAnimationModel _animation(RivRawObject object) {
     return RivAnimationModel(
-      name: _name(object),
+      // Animations name via Animation.name (key 55), not Component.name.
+      name: _name(object, key: RivPropertyKeys.animationName),
       fps: _uint(object, RivPropertyKeys.animationFps) ?? 60,
       durationFrames: _uint(object, RivPropertyKeys.animationDuration) ?? 60,
     );

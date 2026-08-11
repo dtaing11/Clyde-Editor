@@ -81,6 +81,13 @@ class PropertyGrid extends StatelessWidget {
                   value: value,
                 ),
               ),
+              onKeyframe: state.selectedAnimationModel == null
+                  ? null
+                  : () => state.insertKeyframe(
+                      objectId: nodeRef.componentIndex,
+                      propertyKey: descriptor.key,
+                      value: _valueOf(object, descriptor),
+                    ),
             ),
         ],
         if (paintFields.isNotEmpty) ...[
@@ -164,18 +171,24 @@ class PropertyGrid extends StatelessWidget {
   }
 }
 
-/// Numeric field with drag-to-adjust and text entry.
+/// Numeric field with drag-to-adjust, text entry, and an optional
+/// keyframe button.
 class NumericPropertyField extends StatefulWidget {
   const NumericPropertyField({
     super.key,
     required this.descriptor,
     required this.value,
     required this.onChanged,
+    this.onKeyframe,
   });
 
   final PropertyDescriptor descriptor;
   final double value;
   final ValueChanged<double> onChanged;
+
+  /// Keys the current value at the playhead; `null` hides the button
+  /// (no animation selected).
+  final VoidCallback? onKeyframe;
 
   @override
   State<NumericPropertyField> createState() => _NumericPropertyFieldState();
@@ -252,6 +265,22 @@ class _NumericPropertyFieldState extends State<NumericPropertyField> {
               ),
             ),
           ),
+          if (widget.onKeyframe != null) ...[
+            Tooltip(
+              message: 'Keyframe at playhead',
+              child: InkWell(
+                onTap: widget.onKeyframe,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 3),
+                  child: Icon(
+                    Icons.change_history,
+                    size: 11,
+                    color: EditorTheme.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ],
           SizedBox(
             width: 72,
             height: 22,

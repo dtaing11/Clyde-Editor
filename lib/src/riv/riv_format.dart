@@ -84,6 +84,9 @@ abstract final class RivPropertyKeys {
   static const int animationFps = 56;
   static const int animationDuration = 57;
 
+  /// LinearAnimation.loopValue: 0 oneShot, 1 loop, 2 pingPong.
+  static const int animationLoop = 59;
+
   // KeyedObject / KeyedProperty / KeyFrame
   static const int keyedObjectId = 51;
   static const int keyedPropertyKey = 53;
