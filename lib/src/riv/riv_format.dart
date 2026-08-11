@@ -56,6 +56,9 @@ abstract final class RivTypeKeys {
   /// subsystem, the runtime imports them as artboard components
   /// (see `keyframe_interpolator.cpp`), so they consume object indices.
   static const Set<int> interpolatorTypeKeys = {28, 138, 139, 163, 174, 175};
+
+  /// All KeyFrame subtypes (double, color, id, bool, string, uint).
+  static const Set<int> keyFrameTypeKeys = {30, 37, 50, 84, 142, 450};
 }
 
 /// Property keys the parser reads explicitly.
@@ -83,6 +86,9 @@ abstract final class RivPropertyKeys {
   static const int animationName = 55;
   static const int animationFps = 56;
   static const int animationDuration = 57;
+
+  /// LinearAnimation.loopValue: 0 oneShot, 1 loop, 2 pingPong.
+  static const int animationLoop = 59;
 
   // KeyedObject / KeyedProperty / KeyFrame
   static const int keyedObjectId = 51;

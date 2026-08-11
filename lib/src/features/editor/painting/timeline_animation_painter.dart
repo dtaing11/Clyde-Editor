@@ -1,5 +1,7 @@
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../riv/riv_document_model.dart';
+
 /// Artboard painter driven by the editor timeline.
 ///
 /// Unlike [rive.SingleAnimationPainter], playback time is owned by the
@@ -34,6 +36,9 @@ base class TimelineAnimationPainter extends rive.BasicArtboardPainter {
   void play() {
     if (_animation == null) return;
     _playing = true;
+    _direction = 1;
+    // Replaying a finished one-shot restarts from the beginning.
+    if (loopMode == RivLoopMode.oneShot && _time >= duration) _time = 0;
     scheduleRepaint();
   }
 
@@ -42,8 +47,12 @@ base class TimelineAnimationPainter extends rive.BasicArtboardPainter {
     scheduleRepaint();
   }
 
-  /// Whether playback wraps around at the end of the animation.
-  bool loop = true;
+  /// End-of-animation behaviour: loop wraps, oneShot stops, pingPong
+  /// bounces between the ends.
+  RivLoopMode loopMode = RivLoopMode.loop;
+
+  /// Playback direction for pingPong (1 forward, -1 reverse).
+  int _direction = 1;
 
   /// Jumps to [seconds] on the timeline (used for scrubbing).
   void seek(double seconds) {
@@ -68,14 +77,24 @@ base class TimelineAnimationPainter extends rive.BasicArtboardPainter {
       return super.advance(0);
     }
 
-    _time += elapsedSeconds;
-    if (_time >= duration) {
-      if (loop) {
-        _time = duration > 0 ? _time % duration : 0;
-      } else {
-        _time = duration;
-        _playing = false;
+    _time += elapsedSeconds * _direction;
+    if (duration <= 0) {
+      _time = 0;
+    } else if (_direction > 0 && _time >= duration) {
+      switch (loopMode) {
+        case RivLoopMode.loop:
+          _time %= duration;
+        case RivLoopMode.oneShot:
+          _time = duration;
+          _playing = false;
+        case RivLoopMode.pingPong:
+          _time = duration - (_time - duration);
+          _direction = -1;
       }
+    } else if (_direction < 0 && _time <= 0) {
+      // Only pingPong plays in reverse; bounce forward again.
+      _time = -_time;
+      _direction = 1;
     }
     animation.time = _time;
     animation.apply();

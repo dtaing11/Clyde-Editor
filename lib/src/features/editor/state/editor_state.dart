@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:rive_native/rive_native.dart' as rive;
 
+import '../../../core/commands/animation_commands.dart';
 import '../../../core/commands/command_processor.dart';
 import '../../../core/commands/document_commands.dart';
 import '../../../core/commands/editor_command.dart';
@@ -11,6 +12,7 @@ import '../../../riv/riv_artboard_editor.dart';
 import '../../../riv/riv_document_builder.dart';
 import '../../../riv/riv_document_editor.dart';
 import '../../../riv/riv_document_model.dart';
+import '../../../riv/riv_format.dart';
 import '../../../riv/riv_hierarchy.dart';
 import '../painting/timeline_animation_painter.dart';
 import '../services/autosave_service.dart';
@@ -441,6 +443,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
         previousAnimationIndex < _animations.length) {
       _selectedAnimationIndex = previousAnimationIndex;
       painter.setAnimation(selectedAnimation);
+      _syncPainterLoopMode();
     }
     seek(previousTime);
     if (wasPlaying) togglePlay();
@@ -496,15 +499,86 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     _currentTime = 0;
     painter.artboardChanged(artboard);
     painter.setAnimation(selectedAnimation);
+    _syncPainterLoopMode();
   }
 
   /// Selects the animation at [index] on the active artboard.
+  /// Creates a new animation on the active artboard and selects it.
+  Future<bool> addAnimation(String name) async {
+    final ordinal = activeArtboardOrdinal;
+    if (ordinal < 0) return false;
+    final countBefore = _animations.length;
+    final ok = await dispatch(
+      AddAnimationCommand(artboardOrdinal: ordinal, name: name),
+    );
+    if (ok && _animations.length > countBefore) {
+      selectAnimation(_animations.length - 1);
+    }
+    return ok;
+  }
+
+  /// Loop mode of the selected animation (authored value).
+  RivLoopMode get loopMode => selectedAnimationModel?.loop ?? RivLoopMode.loop;
+
+  /// Persists a new loop mode for the selected animation and applies it
+  /// to live playback.
+  Future<bool> setLoopMode(RivLoopMode mode) async {
+    final ordinal = activeArtboardOrdinal;
+    if (ordinal < 0 || _selectedAnimationIndex < 0) return false;
+    final ok = await dispatch(
+      SetAnimationUintCommand(
+        artboardOrdinal: ordinal,
+        animationOrdinal: _selectedAnimationIndex,
+        propertyKey: RivPropertyKeys.animationLoop,
+        value: mode.value,
+        commandLabel: 'Set loop mode',
+      ),
+    );
+    if (ok) painter.loopMode = mode;
+    return ok;
+  }
+
+  void _syncPainterLoopMode() {
+    painter.loopMode = loopMode;
+  }
+
+  /// Deletes [keyframe] from the document (context-menu action).
+  Future<bool> deleteKeyframe(RivKeyFrameModel keyframe) {
+    if (keyframe.rawObjectIndex < 0) return Future.value(false);
+    return dispatch(
+      DeleteKeyframeCommand(rawObjectIndex: keyframe.rawObjectIndex),
+    );
+  }
+
+  /// Keyframes [propertyKey] of component [objectId] with [value] at
+  /// the current playhead frame of the selected animation.
+  Future<bool> insertKeyframe({
+    required int objectId,
+    required int propertyKey,
+    required double value,
+  }) {
+    final animation = selectedAnimationModel;
+    final ordinal = activeArtboardOrdinal;
+    if (animation == null || ordinal < 0) return Future.value(false);
+    return dispatch(
+      InsertKeyframeCommand(
+        artboardOrdinal: ordinal,
+        animationOrdinal: _selectedAnimationIndex,
+        objectId: objectId,
+        propertyKey: propertyKey,
+        frame: (_currentTime * animation.fps).round(),
+        value: value,
+      ),
+    );
+  }
+
   void selectAnimation(int index) {
     if (index < 0 || index >= _animations.length) return;
     _selectedAnimationIndex = index;
     _isPlaying = false;
     _currentTime = 0;
     painter.setAnimation(selectedAnimation);
+    _syncPainterLoopMode();
     notifyListeners();
   }
 

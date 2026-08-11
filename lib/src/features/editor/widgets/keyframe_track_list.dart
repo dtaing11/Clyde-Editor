@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/editor_theme.dart';
 import '../../../riv/riv_document_model.dart';
+import '../../../shared/widgets/editor_context_menu.dart';
 
 /// Scrollable list of keyframe tracks for the selected animation.
 ///
@@ -17,6 +18,7 @@ class KeyframeTrackList extends StatelessWidget {
     this.selectedKeyedObject,
     this.onSelectKeyedObject,
     this.onRetimeKeyframe,
+    this.onDeleteKeyframe,
   });
 
   final RivAnimationModel animation;
@@ -31,6 +33,10 @@ class KeyframeTrackList extends StatelessWidget {
   /// When `null` the tracks are read-only.
   final void Function(RivKeyFrameModel keyframe, int newFrame)?
   onRetimeKeyframe;
+
+  /// Invoked when the user chooses Delete from a keyframe's context
+  /// menu. When `null`, keyframes cannot be deleted.
+  final ValueChanged<RivKeyFrameModel>? onDeleteKeyframe;
 
   /// Width reserved on the left for track names, so keyframe positions
   /// align with the shared time ruler above.
@@ -60,6 +66,7 @@ class KeyframeTrackList extends StatelessWidget {
               animation: animation,
               labelWidth: labelWidth,
               onRetimeKeyframe: onRetimeKeyframe,
+              onDeleteKeyframe: onDeleteKeyframe,
             ),
         ],
       ],
@@ -117,6 +124,7 @@ class _PropertyTrackRow extends StatelessWidget {
     required this.animation,
     required this.labelWidth,
     required this.onRetimeKeyframe,
+    required this.onDeleteKeyframe,
   });
 
   final RivKeyedPropertyModel property;
@@ -124,6 +132,7 @@ class _PropertyTrackRow extends StatelessWidget {
   final double labelWidth;
   final void Function(RivKeyFrameModel keyframe, int newFrame)?
   onRetimeKeyframe;
+  final ValueChanged<RivKeyFrameModel>? onDeleteKeyframe;
 
   @override
   Widget build(BuildContext context) {
@@ -150,6 +159,7 @@ class _PropertyTrackRow extends StatelessWidget {
               property: property,
               durationFrames: animation.durationFrames,
               onRetimeKeyframe: onRetimeKeyframe,
+              onDeleteKeyframe: onDeleteKeyframe,
             ),
           ),
         ],
@@ -165,12 +175,14 @@ class _KeyframeTrackArea extends StatefulWidget {
     required this.property,
     required this.durationFrames,
     required this.onRetimeKeyframe,
+    required this.onDeleteKeyframe,
   });
 
   final RivKeyedPropertyModel property;
   final int durationFrames;
   final void Function(RivKeyFrameModel keyframe, int newFrame)?
   onRetimeKeyframe;
+  final ValueChanged<RivKeyFrameModel>? onDeleteKeyframe;
 
   @override
   State<_KeyframeTrackArea> createState() => _KeyframeTrackAreaState();
@@ -206,6 +218,28 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
     return closest;
   }
 
+  Future<void> _showKeyframeMenu(
+    Offset localPosition,
+    Offset globalPosition,
+    double width,
+  ) async {
+    final hit = _hitTest(localPosition.dx, width);
+    if (hit == null) return;
+    final action = await showEditorContextMenu<String>(
+      context: context,
+      globalPosition: globalPosition,
+      entries: const [
+        ContextMenuEntry(
+          value: 'delete',
+          label: 'Delete keyframe',
+          icon: Icons.delete_outline,
+          destructive: true,
+        ),
+      ],
+    );
+    if (action == 'delete') widget.onDeleteKeyframe?.call(hit);
+  }
+
   @override
   Widget build(BuildContext context) {
     final editable = widget.onRetimeKeyframe != null;
@@ -214,6 +248,13 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
         final width = constraints.maxWidth;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
+          onSecondaryTapUp: widget.onDeleteKeyframe == null
+              ? null
+              : (details) => _showKeyframeMenu(
+                  details.localPosition,
+                  details.globalPosition,
+                  width,
+                ),
           onHorizontalDragStart: editable
               ? (details) {
                   final hit = _hitTest(details.localPosition.dx, width);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/editor_theme.dart';
+import '../../../riv/riv_document_model.dart';
 import '../state/editor_state.dart';
 import 'editor_panel.dart';
 import 'keyframe_track_list.dart';
@@ -79,6 +80,9 @@ class TimelinePanel extends StatelessWidget {
                           onRetimeKeyframe: state.canEdit
                               ? (keyframe, newFrame) =>
                                     state.retimeKeyframe(keyframe, newFrame)
+                              : null,
+                          onDeleteKeyframe: state.canEdit
+                              ? state.deleteKeyframe
                               : null,
                         ),
                 ),
@@ -202,8 +206,50 @@ class _TransportBar extends StatelessWidget {
             icon: const Icon(Icons.undo),
             onPressed: state.canUndo ? state.undo : null,
           ),
+          const SizedBox(width: 12),
+          _LoopModeButton(state: state),
         ],
       ),
+    );
+  }
+}
+
+/// Cycles the animation's loop mode: Loop -> Ping Pong -> One Shot.
+///
+/// The mode is authored into the document (undoable) and applied to
+/// live playback immediately.
+class _LoopModeButton extends StatelessWidget {
+  const _LoopModeButton({required this.state});
+
+  final EditorState state;
+
+  static const Map<RivLoopMode, (IconData, String)> _display = {
+    RivLoopMode.loop: (Icons.repeat, 'Loop'),
+    RivLoopMode.pingPong: (Icons.sync_alt, 'Ping Pong'),
+    RivLoopMode.oneShot: (Icons.arrow_right_alt, 'One Shot'),
+  };
+
+  static const List<RivLoopMode> _cycle = [
+    RivLoopMode.loop,
+    RivLoopMode.pingPong,
+    RivLoopMode.oneShot,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final mode = state.loopMode;
+    final (icon, label) = _display[mode]!;
+    return IconButton(
+      iconSize: 18,
+      visualDensity: VisualDensity.compact,
+      tooltip: '$label (click to change)',
+      icon: Icon(icon, color: EditorTheme.accent),
+      onPressed: state.canEdit
+          ? () {
+              final next = _cycle[(_cycle.indexOf(mode) + 1) % _cycle.length];
+              state.setLoopMode(next);
+            }
+          : null,
     );
   }
 }

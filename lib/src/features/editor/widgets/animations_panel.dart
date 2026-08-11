@@ -13,11 +13,61 @@ class AnimationsPanel extends StatelessWidget {
 
   final EditorState state;
 
+  Future<void> _addAnimation(BuildContext context) async {
+    final controller = TextEditingController(
+      text: 'Animation ${state.animations.length + 1}',
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New Animation'),
+        content: SizedBox(
+          width: 260,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(fontSize: 12),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty) return;
+    await state.addAnimation(name.trim());
+  }
+
   @override
   Widget build(BuildContext context) {
     final doc = state.document;
     return EditorPanel(
       title: 'Animations',
+      actions: [
+        if (doc != null && state.activeArtboard != null)
+          Tooltip(
+            message: 'New animation',
+            child: InkWell(
+              onTap: () => _addAnimation(context),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(
+                  Icons.add,
+                  size: 14,
+                  color: EditorTheme.textSecondary,
+                ),
+              ),
+            ),
+          ),
+      ],
       child: doc == null
           ? const Center(
               child: Text(

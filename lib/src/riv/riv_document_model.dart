@@ -36,14 +36,37 @@ class RivAnimationModel {
     required this.name,
     required this.fps,
     required this.durationFrames,
+    this.loop = RivLoopMode.loop,
   });
 
   final String name;
   final int fps;
   final int durationFrames;
+
+  /// How playback behaves at the end of the animation.
+  final RivLoopMode loop;
+
   final List<RivKeyedObjectModel> keyedObjects = [];
 
   double get durationSeconds => fps > 0 ? durationFrames / fps : 0;
+}
+
+/// LinearAnimation.loopValue semantics (`rive::Loop`).
+enum RivLoopMode {
+  oneShot(0),
+  loop(1),
+  pingPong(2);
+
+  const RivLoopMode(this.value);
+
+  /// Serialized loopValue.
+  final int value;
+
+  static RivLoopMode fromValue(int value) => switch (value) {
+    0 => RivLoopMode.oneShot,
+    2 => RivLoopMode.pingPong,
+    _ => RivLoopMode.loop,
+  };
 }
 
 /// All keyed properties for one animated component.
