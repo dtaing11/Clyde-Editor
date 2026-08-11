@@ -393,3 +393,82 @@ final class SetKeyframeInterpolationCommand extends SnapshotUndoCommand {
     'interpolationType': interpolationType,
   };
 }
+
+/// Makes a keyframe cubic with bezier ease control points.
+///
+/// Mergeable per keyframe so dragging ease handles coalesces into one
+/// undo entry.
+final class SetKeyframeCubicCommand extends SnapshotUndoCommand {
+  SetKeyframeCubicCommand({
+    required this.rawObjectIndex,
+    required this.x1,
+    required this.y1,
+    required this.x2,
+    required this.y2,
+  });
+
+  factory SetKeyframeCubicCommand.fromJson(Map<String, dynamic> json) =>
+      SetKeyframeCubicCommand(
+        rawObjectIndex: json['rawObjectIndex'] as int,
+        x1: (json['x1'] as num).toDouble(),
+        y1: (json['y1'] as num).toDouble(),
+        x2: (json['x2'] as num).toDouble(),
+        y2: (json['y2'] as num).toDouble(),
+      );
+
+  static const String type = 'setKeyframeCubic';
+
+  final int rawObjectIndex;
+  final double x1;
+  final double y1;
+  final double x2;
+  final double y2;
+
+  @override
+  String get label => 'Set cubic ease';
+
+  @override
+  bool get isMergeable => true;
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final ok = RivAnimationFactory.setKeyframeCubic(
+      context.editor!.raw,
+      rawObjectIndex: rawObjectIndex,
+      x1: x1,
+      y1: y1,
+      x2: x2,
+      y2: y2,
+    );
+    return ok
+        ? const CommandResult.success()
+        : CommandResult.failed(
+            TargetNotFoundFailure('keyframe@$rawObjectIndex'),
+          );
+  }
+
+  @override
+  EditorCommand? mergeWith(EditorCommand next) {
+    if (next is! SetKeyframeCubicCommand ||
+        next.rawObjectIndex != rawObjectIndex) {
+      return null;
+    }
+    return SetKeyframeCubicCommand(
+      rawObjectIndex: rawObjectIndex,
+      x1: next.x1,
+      y1: next.y1,
+      x2: next.x2,
+      y2: next.y2,
+    )..adoptSnapshotFrom(this);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'rawObjectIndex': rawObjectIndex,
+    'x1': x1,
+    'y1': y1,
+    'x2': x2,
+    'y2': y2,
+  };
+}

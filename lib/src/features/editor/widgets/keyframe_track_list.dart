@@ -325,6 +325,13 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
               : 'Hold (stepped)',
           icon: Icons.stairs_outlined,
         ),
+        ContextMenuEntry(
+          value: 'cubic',
+          label: hit.interpolation == RivInterpolationType.cubic
+              ? 'Ease (cubic) ✓'
+              : 'Ease (cubic)',
+          icon: Icons.gesture,
+        ),
       ],
       if (widget.onPasteKeyframe != null)
         const ContextMenuEntry(
@@ -356,6 +363,8 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
         widget.onSetInterpolation?.call(hit!, RivInterpolationType.linear);
       case 'hold':
         widget.onSetInterpolation?.call(hit!, RivInterpolationType.hold);
+      case 'cubic':
+        widget.onSetInterpolation?.call(hit!, RivInterpolationType.cubic);
       case 'delete':
         widget.onDeleteKeyframe?.call(hit!);
     }

@@ -99,7 +99,7 @@ void main() {
     });
 
     test('keyframe time conversion uses fps', () {
-      const keyframe = RivKeyFrameModel(
+      final keyframe = RivKeyFrameModel(
         frame: 30,
         interpolation: RivInterpolationType.linear,
       );

@@ -11,6 +11,8 @@ import 'package:rive_editor/src/riv/riv_document_builder.dart';
 import 'package:rive_editor/src/riv/riv_document_editor.dart';
 import 'package:rive_editor/src/riv/riv_format.dart';
 import 'package:rive_editor/src/riv/riv_hierarchy.dart';
+import 'package:rive_editor/src/riv/riv_keyframe_evaluator.dart';
+import 'package:rive_editor/src/riv/riv_parser.dart';
 import 'package:rive_editor/src/riv/riv_shape_factory.dart';
 import 'package:rive_editor/src/features/editor/widgets/animations_panel.dart';
 import 'package:rive_editor/src/features/editor/widgets/canvas_panel.dart';
@@ -273,6 +275,87 @@ void main() {
     animation.apply();
     artboard.advance(0);
     expect(component.x, closeTo(200, 0.5));
+
+    animation.dispose();
+    artboard.dispose();
+    file.dispose();
+  });
+
+  testWidgets('cubic ease keyframes decode and ease in the engine', (
+    tester,
+  ) async {
+    await rive.RiveNative.init();
+
+    final editor = RivDocumentEditor.parse(RivDocumentBuilder.newDocument());
+    final context = _EngineTestContext(editor);
+    AddShapeCommand(
+      artboardOrdinal: 0,
+      kind: RivShapeKind.rectangle,
+      name: 'Easer',
+      x: 100,
+      y: 100,
+      width: 50,
+      height: 50,
+    ).execute(context);
+    AddAnimationCommand(artboardOrdinal: 0, name: 'Ease').execute(context);
+    for (final (frame, value) in [(0, 0.0), (60, 100.0)]) {
+      InsertKeyframeCommand(
+        artboardOrdinal: 0,
+        animationOrdinal: 0,
+        objectId: 1,
+        propertyKey: 13,
+        frame: frame,
+        value: value,
+      ).execute(context);
+    }
+    // Make the first keyframe an ease-in-out cubic.
+    final keyframeIndex = editor.raw.objects.indexWhere(
+      (o) => o.typeKey == 30, // KeyFrameDouble
+    );
+    expect(
+      SetKeyframeCubicCommand(
+        rawObjectIndex: keyframeIndex,
+        x1: 0.42,
+        y1: 0,
+        x2: 0.58,
+        y2: 1,
+      ).execute(context).succeeded,
+      isTrue,
+    );
+
+    final file = await rive.File.decode(
+      editor.bytes(),
+      riveFactory: rive.Factory.rive,
+    );
+    expect(file, isNotNull, reason: 'engine must accept cubic bytes');
+    final artboard = file!.artboardAt(0, frameOrigin: false);
+    final animation = artboard!.animationNamed('Ease')!;
+    final component = artboard.component('Easer')!;
+
+    double xAt(double time) {
+      animation.time = time;
+      animation.apply();
+      artboard.advance(0);
+      return component.x;
+    }
+
+    // Ease-in-out at the midpoint equals linear by symmetry.
+    expect(xAt(0.5), closeTo(50, 0.5));
+    // But at 25% progress, eased x must lag linear (slow start).
+    expect(xAt(0.25), lessThan(25));
+    // Engine easing must match our evaluator at the same points.
+    final model = RivParser.parse(editor.bytes());
+    final property = model
+        .artboards
+        .single
+        .animations
+        .single
+        .keyedObjects
+        .single
+        .properties
+        .single;
+    final oursAtQuarter = RivKeyframeEvaluator.evaluate(property, 0.25, 60)!;
+    expect(xAt(0.25), closeTo(oursAtQuarter, 0.5));
 
     animation.dispose();
     artboard.dispose();

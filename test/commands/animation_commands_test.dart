@@ -10,6 +10,7 @@ import 'package:rive_editor/src/riv/riv_document_builder.dart';
 import 'package:rive_editor/src/riv/riv_document_editor.dart';
 import 'package:rive_editor/src/riv/riv_format.dart';
 import 'package:rive_editor/src/riv/riv_document_model.dart';
+import 'package:rive_editor/src/riv/riv_keyframe_evaluator.dart';
 import 'package:rive_editor/src/riv/riv_parser.dart';
 import 'package:rive_editor/src/riv/riv_raw_document.dart';
 import 'package:rive_editor/src/riv/riv_shape_factory.dart';
@@ -579,6 +580,180 @@ void main() {
               as SetKeyframeInterpolationCommand;
       expect(decoded.rawObjectIndex, 9);
       expect(decoded.interpolationType, 0);
+    });
+  });
+  group('cubic interpolation', () {
+    RivRawDocument keyed() {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      RivAnimationFactory.addAnimation(raw, artboardOrdinal: 0, name: 'A');
+      for (final (frame, value) in [(0, 0.0), (30, 100.0)]) {
+        RivAnimationFactory.insertKeyframe(
+          raw,
+          artboardOrdinal: 0,
+          animationOrdinal: 0,
+          objectId: 1,
+          propertyKey: 13,
+          frame: frame,
+          value: value,
+        );
+      }
+      return raw;
+    }
+
+    int firstKeyframeIndex(RivRawDocument raw) {
+      for (var i = 0; i < raw.objects.length; i++) {
+        if (raw.objects[i].typeKey == RivTypeKeys.keyFrameDouble) return i;
+      }
+      return -1;
+    }
+
+    test('setKeyframeCubic appends an interpolator and links it', () {
+      final raw = keyed();
+      expect(
+        RivAnimationFactory.setKeyframeCubic(
+          raw,
+          rawObjectIndex: firstKeyframeIndex(raw),
+          x1: 0.42,
+          y1: 0,
+          x2: 0.58,
+          y2: 1,
+        ),
+        isTrue,
+      );
+      final keyframe = RivParser.parse(raw.serialize())
+          .artboards
+          .single
+          .animations
+          .single
+          .keyedObjects
+          .single
+          .properties
+          .single
+          .keyframes
+          .first;
+      expect(keyframe.interpolation, RivInterpolationType.cubic);
+      expect(keyframe.cubic, isNotNull);
+      expect(keyframe.cubic!.x1, closeTo(0.42, 1e-5));
+      expect(keyframe.cubic!.y2, closeTo(1, 1e-5));
+    });
+
+    test('re-applying cubic reuses the existing interpolator', () {
+      final raw = keyed();
+      final index = firstKeyframeIndex(raw);
+      RivAnimationFactory.setKeyframeCubic(
+        raw,
+        rawObjectIndex: index,
+        x1: 0.42,
+        y1: 0,
+        x2: 0.58,
+        y2: 1,
+      );
+      final countAfterFirst = raw.objects
+          .where((o) => o.typeKey == RivTypeKeys.cubicEaseInterpolator)
+          .length;
+      RivAnimationFactory.setKeyframeCubic(
+        raw,
+        rawObjectIndex: index,
+        x1: 0.1,
+        y1: 0.2,
+        x2: 0.3,
+        y2: 0.4,
+      );
+      final countAfterSecond = raw.objects
+          .where((o) => o.typeKey == RivTypeKeys.cubicEaseInterpolator)
+          .length;
+      expect(countAfterFirst, 1);
+      expect(countAfterSecond, 1);
+      final keyframe = RivParser.parse(raw.serialize())
+          .artboards
+          .single
+          .animations
+          .single
+          .keyedObjects
+          .single
+          .properties
+          .single
+          .keyframes
+          .first;
+      expect(keyframe.cubic!.x1, closeTo(0.1, 1e-5));
+    });
+
+    test('does not shift existing component indices', () {
+      final raw = keyed();
+      final namesBefore = RivParser.fromRaw(
+        raw,
+      ).artboards.single.componentNames;
+      RivAnimationFactory.setKeyframeCubic(
+        raw,
+        rawObjectIndex: firstKeyframeIndex(raw),
+        x1: 0.42,
+        y1: 0,
+        x2: 0.58,
+        y2: 1,
+      );
+      final namesAfter = RivParser.parse(
+        raw.serialize(),
+      ).artboards.single.componentNames;
+      for (final entry in namesBefore.entries) {
+        expect(namesAfter[entry.key], entry.value);
+      }
+    });
+
+    test('SetKeyframeCubicCommand: byte-identity undo + merge + codec', () {
+      final context = _TestContext(keyed().serialize());
+      final before = context.editor.raw.serialize();
+      final index = firstKeyframeIndex(context.editor.raw);
+
+      final processor = CommandProcessor(context: context);
+      processor.execute(
+        SetKeyframeCubicCommand(
+          rawObjectIndex: index,
+          x1: 0.42,
+          y1: 0,
+          x2: 0.58,
+          y2: 1,
+        ),
+      );
+      processor.execute(
+        SetKeyframeCubicCommand(
+          rawObjectIndex: index,
+          x1: 0.2,
+          y1: 0.1,
+          x2: 0.8,
+          y2: 0.9,
+        ),
+      );
+      // Merged: one undo restores the original bytes.
+      processor.undo();
+      expect(processor.canUndo, isFalse);
+      expect(context.editor.raw.serialize(), before);
+
+      final decoded =
+          EditorCommandCodec.instance.decode(
+                SetKeyframeCubicCommand(
+                  rawObjectIndex: 3,
+                  x1: 0.1,
+                  y1: 0.2,
+                  x2: 0.3,
+                  y2: 0.4,
+                ).toJson(),
+              )
+              as SetKeyframeCubicCommand;
+      expect(decoded.x2, 0.3);
+    });
+
+    test('evaluator eases exactly through the bezier solver', () {
+      const ease = RivCubicEase.easeInOut;
+      // ease-in-out at x=0.5 is exactly 0.5 by symmetry.
+      expect(
+        RivKeyframeEvaluator.debugCubicEaseT(0.5, ease),
+        closeTo(0.5, 1e-4),
+      );
+      // Early progress is slower than linear for ease-in-out.
+      expect(RivKeyframeEvaluator.debugCubicEaseT(0.25, ease), lessThan(0.25));
+      // Endpoints are exact.
+      expect(RivKeyframeEvaluator.debugCubicEaseT(0, ease), 0);
+      expect(RivKeyframeEvaluator.debugCubicEaseT(1, ease), 1);
     });
   });
 }
