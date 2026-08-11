@@ -72,5 +72,9 @@ final class EditorCommandCodec {
       SetKeyframeInterpolationCommand.fromJson,
     );
     register(SetKeyframeCubicCommand.type, SetKeyframeCubicCommand.fromJson);
+    register(
+      TransformKeyframesCommand.type,
+      TransformKeyframesCommand.fromJson,
+    );
   }
 }

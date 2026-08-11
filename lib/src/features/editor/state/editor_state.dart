@@ -615,6 +615,22 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     }
   }
 
+  /// Moves a box-selected group of keyframes in one atomic, mergeable
+  /// command (curve editor group drags).
+  Future<bool> transformKeyframes(List<(RivKeyFrameModel, int, double)> moves) {
+    final valid = [
+      for (final (keyframe, frame, value) in moves)
+        if (keyframe.rawObjectIndex >= 0)
+          KeyframeMove(
+            rawObjectIndex: keyframe.rawObjectIndex,
+            frame: frame,
+            value: value,
+          ),
+    ];
+    if (valid.isEmpty) return Future.value(false);
+    return dispatch(TransformKeyframesCommand(moves: valid));
+  }
+
   /// Sets a cubic keyframe's ease control points (curve editor tangent
   /// handle drags); mergeable so one drag is one undo entry.
   Future<bool> setKeyframeCubicEase(

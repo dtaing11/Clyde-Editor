@@ -472,3 +472,129 @@ final class SetKeyframeCubicCommand extends SnapshotUndoCommand {
     'y2': y2,
   };
 }
+
+/// Moves a set of keyframes to absolute (frame, value) pairs in one
+/// atomic step (curve editor box-select transforms).
+///
+/// The caller is responsible for keeping frames monotonic per track
+/// (the curve editor clamps group deltas); the command verifies each
+/// target is a keyframe and rejects the whole batch otherwise, so a
+/// stale index can never corrupt unrelated objects. Mergeable per
+/// keyframe set so one group drag is one undo entry.
+final class TransformKeyframesCommand extends SnapshotUndoCommand {
+  TransformKeyframesCommand({required this.moves})
+    : assert(moves.isNotEmpty, 'At least one keyframe required');
+
+  factory TransformKeyframesCommand.fromJson(Map<String, dynamic> json) =>
+      TransformKeyframesCommand(
+        moves: [
+          for (final move in json['moves'] as List)
+            KeyframeMove(
+              rawObjectIndex: (move as Map)['rawObjectIndex'] as int,
+              frame: move['frame'] as int,
+              value: (move['value'] as num).toDouble(),
+            ),
+        ],
+      );
+
+  static const String type = 'transformKeyframes';
+
+  final List<KeyframeMove> moves;
+
+  @override
+  String get label =>
+      moves.length == 1 ? 'Move keyframe' : 'Move ${moves.length} keyframes';
+
+  @override
+  bool get isMergeable => true;
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final raw = context.editor!.raw;
+    // Validate the whole batch first: atomic per §2.7.
+    for (final move in moves) {
+      if (move.rawObjectIndex < 0 ||
+          move.rawObjectIndex >= raw.objects.length ||
+          !RivTypeKeys.keyFrameTypeKeys.contains(
+            raw.objects[move.rawObjectIndex].typeKey,
+          )) {
+        return CommandResult.failed(
+          TargetNotFoundFailure('keyframe@${move.rawObjectIndex}'),
+        );
+      }
+    }
+
+    var changed = false;
+    for (final move in moves) {
+      final object = raw.objects[move.rawObjectIndex];
+      final frameProperty = object.property(RivPropertyKeys.keyFrameFrame);
+      final currentFrame = frameProperty?.uintValue ?? 0;
+      if (currentFrame != move.frame) {
+        if (frameProperty != null) {
+          frameProperty.uintValue = move.frame;
+        } else if (move.frame != 0) {
+          final writer = RivBinaryWriter()..writeVarUint(move.frame);
+          object.properties.add(
+            RivRawProperty(
+              key: RivPropertyKeys.keyFrameFrame,
+              fieldType: RivFieldType.uint,
+              valueBytes: writer.takeBytes(),
+            ),
+          );
+        }
+        changed = changed || currentFrame != move.frame;
+      }
+      final valueProperty = object.property(
+        RivPropertyKeys.keyFrameDoubleValue,
+      );
+      if (valueProperty != null && valueProperty.floatValue != move.value) {
+        valueProperty.floatValue = move.value;
+        changed = true;
+      }
+    }
+    return changed
+        ? const CommandResult.success()
+        : const CommandResult.failed(NoChangeFailure());
+  }
+
+  @override
+  EditorCommand? mergeWith(EditorCommand next) {
+    if (next is! TransformKeyframesCommand ||
+        next.moves.length != moves.length) {
+      return null;
+    }
+    for (var i = 0; i < moves.length; i++) {
+      if (next.moves[i].rawObjectIndex != moves[i].rawObjectIndex) {
+        return null;
+      }
+    }
+    return TransformKeyframesCommand(moves: next.moves)
+      ..adoptSnapshotFrom(this);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'moves': [
+      for (final move in moves)
+        {
+          'rawObjectIndex': move.rawObjectIndex,
+          'frame': move.frame,
+          'value': move.value,
+        },
+    ],
+  };
+}
+
+/// One keyframe's target position within a [TransformKeyframesCommand].
+final class KeyframeMove {
+  const KeyframeMove({
+    required this.rawObjectIndex,
+    required this.frame,
+    required this.value,
+  });
+
+  final int rawObjectIndex;
+  final int frame;
+  final double value;
+}
