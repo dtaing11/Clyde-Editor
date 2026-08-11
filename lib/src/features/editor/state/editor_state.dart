@@ -593,6 +593,24 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     }
   }
 
+  /// Sets a cubic keyframe's ease control points (curve editor tangent
+  /// handle drags); mergeable so one drag is one undo entry.
+  Future<bool> setKeyframeCubicEase(
+    RivKeyFrameModel keyframe,
+    RivCubicEase ease,
+  ) {
+    if (keyframe.rawObjectIndex < 0) return Future.value(false);
+    return dispatch(
+      SetKeyframeCubicCommand(
+        rawObjectIndex: keyframe.rawObjectIndex,
+        x1: ease.x1,
+        y1: ease.y1,
+        x2: ease.x2,
+        y2: ease.y2,
+      ),
+    );
+  }
+
   /// Sets a keyframe's value (curve editor vertical drags); mergeable.
   Future<bool> setKeyframeValue(RivKeyFrameModel keyframe, double value) {
     if (keyframe.rawObjectIndex < 0) return Future.value(false);
