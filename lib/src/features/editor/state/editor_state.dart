@@ -517,6 +517,54 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     return ok;
   }
 
+  /// Timeline display mode: keyframe tracks (dope sheet) or curves.
+  bool get showCurveEditor => _showCurveEditor;
+  bool _showCurveEditor = false;
+
+  /// Property track shown in the curve editor, addressed structurally
+  /// (survives model rebuilds after edits).
+  ({int objectId, int propertyKey})? _curveTrack;
+
+  /// The keyed property currently shown in the curve editor, resolved
+  /// against the live model, or `null`.
+  RivKeyedPropertyModel? get curveProperty {
+    final track = _curveTrack;
+    final animation = selectedAnimationModel;
+    if (track == null || animation == null) return null;
+    for (final keyedObject in animation.keyedObjects) {
+      if (keyedObject.objectId != track.objectId) continue;
+      for (final property in keyedObject.properties) {
+        if (property.propertyKey == track.propertyKey) return property;
+      }
+    }
+    return null;
+  }
+
+  /// Shows the curve editor for one property track.
+  void showCurvesFor({required int objectId, required int propertyKey}) {
+    _curveTrack = (objectId: objectId, propertyKey: propertyKey);
+    _showCurveEditor = true;
+    notifyListeners();
+  }
+
+  /// Switches the timeline back to the keyframe track list.
+  void showTracks() {
+    if (!_showCurveEditor) return;
+    _showCurveEditor = false;
+    notifyListeners();
+  }
+
+  /// Sets a keyframe's value (curve editor vertical drags); mergeable.
+  Future<bool> setKeyframeValue(RivKeyFrameModel keyframe, double value) {
+    if (keyframe.rawObjectIndex < 0) return Future.value(false);
+    return dispatch(
+      SetKeyframeValueCommand(
+        rawObjectIndex: keyframe.rawObjectIndex,
+        value: value,
+      ),
+    );
+  }
+
   /// Copied keyframe payload: which component property it animates and
   /// the value to re-key. Paste inserts at the playhead.
   ({int objectId, int propertyKey, double value})? _keyframeClipboard;

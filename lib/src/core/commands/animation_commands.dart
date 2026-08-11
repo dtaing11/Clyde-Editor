@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import '../../riv/riv_animation_factory.dart';
+import '../../riv/riv_format.dart';
+import '../../riv/riv_raw_document.dart';
 
 import 'command_result.dart';
 import 'document_commands.dart';
@@ -238,6 +242,81 @@ final class SetAnimationUintCommand extends SnapshotUndoCommand {
     'artboardOrdinal': artboardOrdinal,
     'animationOrdinal': animationOrdinal,
     'propertyKey': propertyKey,
+    'value': value,
+  };
+}
+
+/// Sets a double keyframe's value (curve editor vertical drags).
+///
+/// Mergeable per keyframe so a continuous drag is one undo entry.
+final class SetKeyframeValueCommand extends SnapshotUndoCommand {
+  SetKeyframeValueCommand({required this.rawObjectIndex, required this.value});
+
+  factory SetKeyframeValueCommand.fromJson(Map<String, dynamic> json) =>
+      SetKeyframeValueCommand(
+        rawObjectIndex: json['rawObjectIndex'] as int,
+        value: (json['value'] as num).toDouble(),
+      );
+
+  static const String type = 'setKeyframeValue';
+
+  final int rawObjectIndex;
+  final double value;
+
+  @override
+  String get label => 'Edit keyframe value';
+
+  @override
+  bool get isMergeable => true;
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final raw = context.editor!.raw;
+    if (rawObjectIndex < 0 || rawObjectIndex >= raw.objects.length) {
+      return CommandResult.failed(
+        TargetNotFoundFailure('keyframe@$rawObjectIndex'),
+      );
+    }
+    final object = raw.objects[rawObjectIndex];
+    if (object.typeKey != RivTypeKeys.keyFrameDouble) {
+      return const CommandResult.failed(
+        InvalidMutationFailure('Not a double keyframe'),
+      );
+    }
+    final property = object.property(RivPropertyKeys.keyFrameDoubleValue);
+    if (property == null) {
+      object.properties.add(
+        RivRawProperty(
+          key: RivPropertyKeys.keyFrameDoubleValue,
+          fieldType: RivFieldType.float,
+          valueBytes: Uint8List(0),
+        )..floatValue = value,
+      );
+      return const CommandResult.success();
+    }
+    if (property.floatValue == value) {
+      return const CommandResult.failed(NoChangeFailure());
+    }
+    property.floatValue = value;
+    return const CommandResult.success();
+  }
+
+  @override
+  EditorCommand? mergeWith(EditorCommand next) {
+    if (next is! SetKeyframeValueCommand ||
+        next.rawObjectIndex != rawObjectIndex) {
+      return null;
+    }
+    return SetKeyframeValueCommand(
+      rawObjectIndex: rawObjectIndex,
+      value: next.value,
+    )..adoptSnapshotFrom(this);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'rawObjectIndex': rawObjectIndex,
     'value': value,
   };
 }

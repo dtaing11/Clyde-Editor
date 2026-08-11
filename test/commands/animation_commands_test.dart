@@ -416,4 +416,80 @@ void main() {
       expect(decoded.value, RivLoopMode.oneShot.value);
     });
   });
+  group('SetKeyframeValueCommand', () {
+    RivRawDocument keyed() {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      RivAnimationFactory.addAnimation(raw, artboardOrdinal: 0, name: 'A');
+      RivAnimationFactory.insertKeyframe(
+        raw,
+        artboardOrdinal: 0,
+        animationOrdinal: 0,
+        objectId: 1,
+        propertyKey: 13,
+        frame: 5,
+        value: 42,
+      );
+      return raw;
+    }
+
+    int keyframeIndex(RivRawDocument raw) {
+      for (var i = 0; i < raw.objects.length; i++) {
+        if (raw.objects[i].typeKey == RivTypeKeys.keyFrameDouble) return i;
+      }
+      return -1;
+    }
+
+    test('changes the value with byte-identity undo', () {
+      final context = _TestContext(keyed().serialize());
+      final before = context.editor.raw.serialize();
+      final index = keyframeIndex(context.editor.raw);
+      final command = SetKeyframeValueCommand(rawObjectIndex: index, value: 99);
+      expect(command.execute(context).succeeded, isTrue);
+      final keyframe = RivParser.fromRaw(context.editor.raw)
+          .artboards
+          .single
+          .animations
+          .single
+          .keyedObjects
+          .single
+          .properties
+          .single
+          .keyframes
+          .single;
+      expect(keyframe.value, 99);
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.raw.serialize(), before);
+    });
+
+    test('merges continuous drags into one entry', () {
+      final context = _TestContext(keyed().serialize());
+      final processor = CommandProcessor(context: context);
+      final index = keyframeIndex(context.editor.raw);
+      for (final value in [50.0, 60.0, 70.0]) {
+        processor.execute(
+          SetKeyframeValueCommand(rawObjectIndex: index, value: value),
+        );
+      }
+      processor.undo();
+      expect(processor.canUndo, isFalse);
+    });
+
+    test('rejects non-keyframe targets and round-trips the codec', () {
+      final context = _TestContext(keyed().serialize());
+      expect(
+        SetKeyframeValueCommand(
+          rawObjectIndex: 0,
+          value: 1,
+        ).execute(context).succeeded,
+        isFalse,
+      );
+      final decoded =
+          EditorCommandCodec.instance.decode(
+                SetKeyframeValueCommand(rawObjectIndex: 7, value: 3.5).toJson(),
+              )
+              as SetKeyframeValueCommand;
+      expect(decoded.rawObjectIndex, 7);
+      expect(decoded.value, 3.5);
+    });
+  });
 }
