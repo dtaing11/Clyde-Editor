@@ -158,6 +158,59 @@ void main() {
     file.dispose();
   });
 
+  testWidgets('create animation and keyframe via the real UI', (tester) async {
+    await rive.RiveNative.init();
+    await tester.pumpWidget(const RiveEditorApp());
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(rive.RiveArtboardWidget).evaluate().isNotEmpty) break;
+    }
+
+    // Draw a rectangle so there is something to keyframe.
+    await tester.tap(find.byTooltip('Rectangle (R)'));
+    await tester.pump();
+    final canvasCentre = tester.getCenter(find.byType(CanvasPanel));
+    final gesture = await tester.startGesture(
+      canvasCentre - const Offset(50, 50),
+    );
+    await gesture.moveTo(canvasCentre + const Offset(50, 50));
+    await gesture.up();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Create an animation through the panel's + action and dialog.
+    await tester.tap(find.byTooltip('New animation'));
+    await tester.pumpAndSettle();
+    expect(find.text('New Animation'), findsOneWidget);
+    await tester.tap(find.text('Create'));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    final editorState = tester
+        .widget<CanvasPanel>(find.byType(CanvasPanel).first)
+        .state;
+    expect(editorState.animations, hasLength(1));
+    expect(editorState.selectedAnimationIndex, 0);
+
+    // Select the shape and key its X via the inspector diamond.
+    await tester.tap(find.byTooltip('Select (V)'));
+    await tester.pump();
+    await tester.tapAt(canvasCentre);
+    await tester.pump();
+    expect(editorState.selection.selected, isNotEmpty);
+
+    await tester.tap(find.byTooltip('Keyframe at playhead').first);
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    final animation = editorState.selectedAnimationModel!;
+    expect(animation.keyedObjects, hasLength(1));
+    expect(animation.keyedObjects.single.properties, isNotEmpty);
+  });
+
   testWidgets('animation + keyframe commands decode and play in the engine', (
     tester,
   ) async {
