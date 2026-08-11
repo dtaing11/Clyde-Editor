@@ -4,6 +4,31 @@ import 'package:rive_editor/src/core/theme/editor_theme.dart';
 import 'package:rive_editor/src/features/editor/widgets/curve_editor.dart';
 import 'package:rive_editor/src/riv/riv_document_model.dart';
 
+RivAnimationModel _multiChannelAnimation() {
+  final animation = RivAnimationModel(name: 'A', fps: 60, durationFrames: 60);
+  final keyed = RivKeyedObjectModel(objectId: 1, objectName: 'Shape');
+  for (final (key, values) in [(13, (0.0, 100.0)), (14, (500.0, 900.0))]) {
+    final property = RivKeyedPropertyModel(propertyKey: key);
+    property.keyframes.addAll([
+      RivKeyFrameModel(
+        frame: 0,
+        interpolation: RivInterpolationType.linear,
+        value: values.$1,
+        rawObjectIndex: 200 + key,
+      ),
+      RivKeyFrameModel(
+        frame: 60,
+        interpolation: RivInterpolationType.linear,
+        value: values.$2,
+        rawObjectIndex: 300 + key,
+      ),
+    ]);
+    keyed.properties.add(property);
+  }
+  animation.keyedObjects.add(keyed);
+  return animation;
+}
+
 RivAnimationModel _animation({
   List<(int, double)> keys = const [],
   RivCubicEase? firstKeyCubic,
@@ -186,5 +211,55 @@ void main() {
       onSetValue: (_, value) => values.add(value),
     );
     expect(find.byType(CurveEditor), findsOneWidget);
+  });
+  testWidgets('sibling channels overlay and expand the value range', (
+    tester,
+  ) async {
+    final animation = _multiChannelAnimation();
+    final xProperty = animation.keyedObjects.single.properties.first;
+    final retimes = <int>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EditorTheme.dark(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 600,
+            height: 300,
+            child: CurveEditor(
+              property: xProperty,
+              animation: animation,
+              siblingProperties: animation.keyedObjects.single.properties,
+              onRetimeKeyframe: (_, frame) => retimes.add(frame),
+              onSetKeyframeValue: (_, _) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(CurveEditor), findsOneWidget);
+
+    // The combined range is [0, 900] padded: X's frame-0 point (value 0)
+    // now sits low in the view rather than at the padded bottom of its
+    // own [0,100] range. Drag it and confirm the correct point moved.
+    final surface = tester.getRect(find.byType(CustomPaint).last);
+    const pad = 14.0;
+    final usable = surface.height - 2 * pad;
+    // Combined padded range: [-90, 990]. Value 0 -> t = 90/1080.
+    final y = surface.bottom - pad - (90 / 1080) * usable;
+    final gesture = await tester.startGesture(Offset(surface.left + 1, y));
+    await gesture.moveBy(const Offset(120, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(
+      retimes,
+      isNotEmpty,
+      reason: 'active-channel points stay draggable with overlays on',
+    );
+  });
+
+  testWidgets('channel colours are stable per property key', (tester) async {
+    expect(CurveEditor.colorFor(13), CurveEditor.colorFor(13));
+    expect(CurveEditor.colorFor(13) == CurveEditor.colorFor(14), isFalse);
   });
 }
