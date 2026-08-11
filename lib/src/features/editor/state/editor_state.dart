@@ -514,6 +514,14 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     return ok;
   }
 
+  /// Deletes [keyframe] from the document (context-menu action).
+  Future<bool> deleteKeyframe(RivKeyFrameModel keyframe) {
+    if (keyframe.rawObjectIndex < 0) return Future.value(false);
+    return dispatch(
+      DeleteKeyframeCommand(rawObjectIndex: keyframe.rawObjectIndex),
+    );
+  }
+
   /// Keyframes [propertyKey] of component [objectId] with [value] at
   /// the current playhead frame of the selected animation.
   Future<bool> insertKeyframe({

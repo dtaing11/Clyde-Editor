@@ -149,3 +149,38 @@ final class InsertKeyframeCommand extends SnapshotUndoCommand {
     'value': value,
   };
 }
+
+/// Deletes a keyframe by its raw object index, pruning empty keyed
+/// containers.
+final class DeleteKeyframeCommand extends SnapshotUndoCommand {
+  DeleteKeyframeCommand({required this.rawObjectIndex});
+
+  factory DeleteKeyframeCommand.fromJson(Map<String, dynamic> json) =>
+      DeleteKeyframeCommand(rawObjectIndex: json['rawObjectIndex'] as int);
+
+  static const String type = 'deleteKeyframe';
+
+  final int rawObjectIndex;
+
+  @override
+  String get label => 'Delete keyframe';
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final ok = RivAnimationFactory.deleteKeyframe(
+      context.editor!.raw,
+      rawObjectIndex,
+    );
+    return ok
+        ? const CommandResult.success()
+        : CommandResult.failed(
+            TargetNotFoundFailure('keyframe@$rawObjectIndex'),
+          );
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'rawObjectIndex': rawObjectIndex,
+  };
+}
