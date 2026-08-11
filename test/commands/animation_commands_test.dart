@@ -492,4 +492,93 @@ void main() {
       expect(decoded.value, 3.5);
     });
   });
+  group('SetKeyframeInterpolationCommand', () {
+    RivRawDocument keyed() {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      RivAnimationFactory.addAnimation(raw, artboardOrdinal: 0, name: 'A');
+      RivAnimationFactory.insertKeyframe(
+        raw,
+        artboardOrdinal: 0,
+        animationOrdinal: 0,
+        objectId: 1,
+        propertyKey: 13,
+        frame: 5,
+        value: 42,
+      );
+      return raw;
+    }
+
+    int keyframeIndex(RivRawDocument raw) {
+      for (var i = 0; i < raw.objects.length; i++) {
+        if (raw.objects[i].typeKey == RivTypeKeys.keyFrameDouble) return i;
+      }
+      return -1;
+    }
+
+    test('switches linear to hold with byte-identity undo', () {
+      final context = _TestContext(keyed().serialize());
+      final before = context.editor.raw.serialize();
+      final index = keyframeIndex(context.editor.raw);
+      final command = SetKeyframeInterpolationCommand(
+        rawObjectIndex: index,
+        interpolationType: 0,
+      );
+      expect(command.execute(context).succeeded, isTrue);
+      final keyframe = RivParser.fromRaw(context.editor.raw)
+          .artboards
+          .single
+          .animations
+          .single
+          .keyedObjects
+          .single
+          .properties
+          .single
+          .keyframes
+          .single;
+      expect(keyframe.interpolation, RivInterpolationType.hold);
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.raw.serialize(), before);
+    });
+
+    test('no-ops when the type is unchanged', () {
+      final context = _TestContext(keyed().serialize());
+      final index = keyframeIndex(context.editor.raw);
+      final result = SetKeyframeInterpolationCommand(
+        rawObjectIndex: index,
+        interpolationType: 1, // Already linear.
+      ).execute(context);
+      expect(result.succeeded, isFalse);
+    });
+
+    test('rejects non-keyframe targets and cubic types', () {
+      final context = _TestContext(keyed().serialize());
+      expect(
+        SetKeyframeInterpolationCommand(
+          rawObjectIndex: 0,
+          interpolationType: 0,
+        ).execute(context).succeeded,
+        isFalse,
+      );
+      expect(
+        () => SetKeyframeInterpolationCommand(
+          rawObjectIndex: 5,
+          interpolationType: 2,
+        ),
+        throwsAssertionError,
+      );
+    });
+
+    test('round-trips through the codec', () {
+      final decoded =
+          EditorCommandCodec.instance.decode(
+                SetKeyframeInterpolationCommand(
+                  rawObjectIndex: 9,
+                  interpolationType: 0,
+                ).toJson(),
+              )
+              as SetKeyframeInterpolationCommand;
+      expect(decoded.rawObjectIndex, 9);
+      expect(decoded.interpolationType, 0);
+    });
+  });
 }

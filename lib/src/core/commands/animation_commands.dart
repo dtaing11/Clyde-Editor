@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../../riv/riv_animation_factory.dart';
+import '../../riv/riv_binary_writer.dart';
 import '../../riv/riv_format.dart';
 import '../../riv/riv_raw_document.dart';
 
@@ -318,5 +319,77 @@ final class SetKeyframeValueCommand extends SnapshotUndoCommand {
     'type': type,
     'rawObjectIndex': rawObjectIndex,
     'value': value,
+  };
+}
+
+/// Sets a keyframe's interpolation type (hold or linear).
+///
+/// Cubic interpolation requires interpolator objects and is handled by
+/// the curve editor's tangent tooling later; this command intentionally
+/// accepts only interpolator-free types.
+final class SetKeyframeInterpolationCommand extends SnapshotUndoCommand {
+  SetKeyframeInterpolationCommand({
+    required this.rawObjectIndex,
+    required this.interpolationType,
+  }) : assert(
+         interpolationType == 0 || interpolationType == 1,
+         'Only hold (0) and linear (1) are interpolator-free',
+       );
+
+  factory SetKeyframeInterpolationCommand.fromJson(Map<String, dynamic> json) =>
+      SetKeyframeInterpolationCommand(
+        rawObjectIndex: json['rawObjectIndex'] as int,
+        interpolationType: json['interpolationType'] as int,
+      );
+
+  static const String type = 'setKeyframeInterpolation';
+
+  final int rawObjectIndex;
+
+  /// 0 = hold, 1 = linear (`rive::KeyFrameInterpolation`).
+  final int interpolationType;
+
+  @override
+  String get label =>
+      interpolationType == 0 ? 'Set hold interpolation' : 'Set linear';
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final raw = context.editor!.raw;
+    if (rawObjectIndex < 0 || rawObjectIndex >= raw.objects.length) {
+      return CommandResult.failed(
+        TargetNotFoundFailure('keyframe@$rawObjectIndex'),
+      );
+    }
+    final object = raw.objects[rawObjectIndex];
+    if (!RivTypeKeys.keyFrameTypeKeys.contains(object.typeKey)) {
+      return const CommandResult.failed(
+        InvalidMutationFailure('Not a keyframe'),
+      );
+    }
+    final property = object.property(RivPropertyKeys.keyFrameInterpolationType);
+    if (property != null) {
+      if (property.uintValue == interpolationType) {
+        return const CommandResult.failed(NoChangeFailure());
+      }
+      property.uintValue = interpolationType;
+    } else {
+      final writer = RivBinaryWriter()..writeVarUint(interpolationType);
+      object.properties.add(
+        RivRawProperty(
+          key: RivPropertyKeys.keyFrameInterpolationType,
+          fieldType: RivFieldType.uint,
+          valueBytes: writer.takeBytes(),
+        ),
+      );
+    }
+    return const CommandResult.success();
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'rawObjectIndex': rawObjectIndex,
+    'interpolationType': interpolationType,
   };
 }

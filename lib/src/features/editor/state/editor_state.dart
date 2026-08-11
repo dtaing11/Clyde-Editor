@@ -554,6 +554,25 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     notifyListeners();
   }
 
+  /// Sets a keyframe's interpolation (hold/linear) from the timeline
+  /// context menu.
+  Future<bool> setKeyframeInterpolation(
+    RivKeyFrameModel keyframe,
+    RivInterpolationType type,
+  ) {
+    if (keyframe.rawObjectIndex < 0) return Future.value(false);
+    if (type != RivInterpolationType.hold &&
+        type != RivInterpolationType.linear) {
+      return Future.value(false);
+    }
+    return dispatch(
+      SetKeyframeInterpolationCommand(
+        rawObjectIndex: keyframe.rawObjectIndex,
+        interpolationType: type.id,
+      ),
+    );
+  }
+
   /// Sets a keyframe's value (curve editor vertical drags); mergeable.
   Future<bool> setKeyframeValue(RivKeyFrameModel keyframe, double value) {
     if (keyframe.rawObjectIndex < 0) return Future.value(false);

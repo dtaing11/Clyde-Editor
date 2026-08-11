@@ -23,6 +23,7 @@ class KeyframeTrackList extends StatelessWidget {
     this.onPasteKeyframe,
     this.canPaste = false,
     this.onShowCurves,
+    this.onSetInterpolation,
   });
 
   final RivAnimationModel animation;
@@ -64,6 +65,11 @@ class KeyframeTrackList extends StatelessWidget {
   )?
   onShowCurves;
 
+  /// Invoked when the user picks an interpolation for a keyframe
+  /// (`RivInterpolationType.hold` or `.linear`).
+  final void Function(RivKeyFrameModel keyframe, RivInterpolationType type)?
+  onSetInterpolation;
+
   /// Width reserved on the left for track names, so keyframe positions
   /// align with the shared time ruler above.
   final double labelWidth;
@@ -101,6 +107,7 @@ class KeyframeTrackList extends StatelessWidget {
               onShowCurves: onShowCurves == null
                   ? null
                   : () => onShowCurves!(keyedObject, property),
+              onSetInterpolation: onSetInterpolation,
             ),
         ],
       ],
@@ -162,6 +169,7 @@ class _PropertyTrackRow extends StatelessWidget {
     required this.onCopyKeyframe,
     required this.onPasteKeyframe,
     required this.onShowCurves,
+    required this.onSetInterpolation,
   });
 
   final RivKeyedPropertyModel property;
@@ -173,6 +181,8 @@ class _PropertyTrackRow extends StatelessWidget {
   final ValueChanged<RivKeyFrameModel>? onCopyKeyframe;
   final VoidCallback? onPasteKeyframe;
   final VoidCallback? onShowCurves;
+  final void Function(RivKeyFrameModel keyframe, RivInterpolationType type)?
+  onSetInterpolation;
 
   @override
   Widget build(BuildContext context) {
@@ -221,6 +231,7 @@ class _PropertyTrackRow extends StatelessWidget {
               onDeleteKeyframe: onDeleteKeyframe,
               onCopyKeyframe: onCopyKeyframe,
               onPasteKeyframe: onPasteKeyframe,
+              onSetInterpolation: onSetInterpolation,
             ),
           ),
         ],
@@ -239,6 +250,7 @@ class _KeyframeTrackArea extends StatefulWidget {
     required this.onDeleteKeyframe,
     required this.onCopyKeyframe,
     required this.onPasteKeyframe,
+    required this.onSetInterpolation,
   });
 
   final RivKeyedPropertyModel property;
@@ -248,6 +260,8 @@ class _KeyframeTrackArea extends StatefulWidget {
   final ValueChanged<RivKeyFrameModel>? onDeleteKeyframe;
   final ValueChanged<RivKeyFrameModel>? onCopyKeyframe;
   final VoidCallback? onPasteKeyframe;
+  final void Function(RivKeyFrameModel keyframe, RivInterpolationType type)?
+  onSetInterpolation;
 
   @override
   State<_KeyframeTrackArea> createState() => _KeyframeTrackAreaState();
@@ -296,6 +310,22 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
           label: 'Copy keyframe',
           icon: Icons.copy_outlined,
         ),
+      if (hit != null && widget.onSetInterpolation != null) ...[
+        ContextMenuEntry(
+          value: 'linear',
+          label: hit.interpolation == RivInterpolationType.linear
+              ? 'Linear interpolation ✓'
+              : 'Linear interpolation',
+          icon: Icons.show_chart,
+        ),
+        ContextMenuEntry(
+          value: 'hold',
+          label: hit.interpolation == RivInterpolationType.hold
+              ? 'Hold (stepped) ✓'
+              : 'Hold (stepped)',
+          icon: Icons.stairs_outlined,
+        ),
+      ],
       if (widget.onPasteKeyframe != null)
         const ContextMenuEntry(
           value: 'paste',
@@ -322,6 +352,10 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
         widget.onCopyKeyframe?.call(hit!);
       case 'paste':
         widget.onPasteKeyframe?.call();
+      case 'linear':
+        widget.onSetInterpolation?.call(hit!, RivInterpolationType.linear);
+      case 'hold':
+        widget.onSetInterpolation?.call(hit!, RivInterpolationType.hold);
       case 'delete':
         widget.onDeleteKeyframe?.call(hit!);
     }
@@ -338,7 +372,8 @@ class _KeyframeTrackAreaState extends State<_KeyframeTrackArea> {
           onSecondaryTapUp:
               (widget.onDeleteKeyframe == null &&
                   widget.onCopyKeyframe == null &&
-                  widget.onPasteKeyframe == null)
+                  widget.onPasteKeyframe == null &&
+                  widget.onSetInterpolation == null)
               ? null
               : (details) => _showKeyframeMenu(
                   details.localPosition,
