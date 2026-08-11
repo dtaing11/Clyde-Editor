@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rive_editor/src/core/theme/editor_theme.dart';
 import 'package:rive_editor/src/features/editor/widgets/curve_editor.dart';
@@ -319,5 +320,62 @@ void main() {
     // 50px of 600px over 60 frames = 5 frames; all move together.
     final frames = [for (final (_, frame, _) in batches.last) frame];
     expect(frames, [15, 35, 55]);
+  });
+  testWidgets('Alt+drag scales the selected group around its first frame', (
+    tester,
+  ) async {
+    final batches = <List<(RivKeyFrameModel, int, double)>>[];
+    final animation = _animation(keys: [(10, 20), (20, 50), (30, 80)]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EditorTheme.dark(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 600,
+            height: 300,
+            child: CurveEditor(
+              property: animation.keyedObjects.single.properties.single,
+              animation: animation,
+              onRetimeKeyframe: (_, _) {},
+              onSetKeyframeValue: (_, _) {},
+              onTransformKeyframes: batches.add,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final surface = tester.getRect(find.byType(CustomPaint).last);
+    // Select all three points with a marquee.
+    final marquee = await tester.startGesture(
+      Offset(surface.left + 2, surface.top + 2),
+    );
+    await marquee.moveTo(Offset(surface.right - 2, surface.bottom - 2));
+    await tester.pump();
+    await marquee.up();
+    await tester.pump();
+
+    // Alt+drag the middle point (frame 20 of 60 -> x at 1/3 width).
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    const pad = 14.0;
+    final usable = surface.height - 2 * pad;
+    // Padded range [14, 86]: value 50 -> t = 0.5.
+    final y = surface.bottom - pad - 0.5 * usable;
+    final drag = await tester.startGesture(
+      Offset(surface.left + surface.width * (20 / 60), y),
+    );
+    // Span is 20 frames = 200px at 600px/60f; +100px doubles the span.
+    await drag.moveBy(const Offset(200, 0));
+    await tester.pump();
+    await drag.up();
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+
+    expect(batches, isNotEmpty);
+    final frames = [for (final (_, frame, _) in batches.last) frame]..sort();
+    // Factor 2 around frame 10: 10 -> 10, 20 -> 30, 30 -> 50.
+    expect(frames.first, 10, reason: 'anchor frame must not move');
+    expect(frames[1], 30);
+    expect(frames[2], 50);
   });
 }

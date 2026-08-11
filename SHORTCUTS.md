@@ -50,6 +50,15 @@ added.
 | `Shift + Cmd/Ctrl + A` | New animation on the active artboard |
 | `K` | Keyframe the selected shape's X/Y at the playhead (creates an animation first when none exists) |
 
+## Curve editor
+
+| Gesture | Action |
+|---|---|
+| Drag empty space | Box-select control points |
+| Drag a selected point | Move the whole selection (frames + values) |
+| `Alt/Option + drag` a selected point | Scale the selection in time around its first frame |
+| Drag an orange square | Reshape the cubic ease (tangent handle) |
+
 ## Playback
 
 | Shortcut | Action |

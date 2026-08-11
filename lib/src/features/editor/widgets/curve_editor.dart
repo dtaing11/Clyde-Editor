@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/theme/editor_theme.dart';
 import '../../../riv/riv_document_model.dart';
@@ -88,6 +89,10 @@ class _CurveEditorState extends State<CurveEditor> {
   /// Group drag: pointer origin and each member's starting frame/value.
   Offset? _groupDragStart;
   Map<int, (int, double)>? _groupOrigins;
+
+  /// When true the group drag scales frames around the group's first
+  /// frame instead of translating (Alt/Option held at drag start).
+  bool _groupScaling = false;
 
   List<RivKeyFrameModel> get _numericKeyframes => [
     for (final keyframe in widget.property.keyframes)
@@ -237,23 +242,41 @@ class _CurveEditorState extends State<CurveEditor> {
     final usable = size.height - 2 * _verticalPadding;
     if (usable <= 0) return;
 
-    var deltaFrames = (((local.dx - start.dx) / size.width) * duration).round();
-    final deltaValue = -((local.dy - start.dy) / usable) * (max - min);
-
-    // Clamp the frame delta so the whole group stays inside [0, dur].
     var lowest = duration;
     var highest = 0;
     for (final (frame, _) in origins.values) {
       if (frame < lowest) lowest = frame;
       if (frame > highest) highest = frame;
     }
-    deltaFrames = deltaFrames.clamp(-lowest, duration - highest);
 
     final moves = <(RivKeyFrameModel, int, double)>[];
-    for (final keyframe in _numericKeyframes) {
-      final origin = origins[keyframe.rawObjectIndex];
-      if (origin == null) continue;
-      moves.add((keyframe, origin.$1 + deltaFrames, origin.$2 + deltaValue));
+    if (_groupScaling && highest > lowest) {
+      // Scale frames around the group's first frame: horizontal drag
+      // stretches the original span (§2.7 Scale keyframes).
+      final pixelsPerFrame = size.width / duration;
+      final spanPixels = (highest - lowest) * pixelsPerFrame;
+      if (spanPixels <= 0) return;
+      final factor = ((spanPixels + (local.dx - start.dx)) / spanPixels).clamp(
+        0.0,
+        (duration - lowest) / (highest - lowest),
+      );
+      for (final keyframe in _numericKeyframes) {
+        final origin = origins[keyframe.rawObjectIndex];
+        if (origin == null) continue;
+        final scaled = lowest + ((origin.$1 - lowest) * factor).round();
+        moves.add((keyframe, scaled.clamp(0, duration), origin.$2));
+      }
+    } else {
+      var deltaFrames = (((local.dx - start.dx) / size.width) * duration)
+          .round();
+      final deltaValue = -((local.dy - start.dy) / usable) * (max - min);
+      // Clamp the delta so the whole group stays inside [0, dur].
+      deltaFrames = deltaFrames.clamp(-lowest, duration - highest);
+      for (final keyframe in _numericKeyframes) {
+        final origin = origins[keyframe.rawObjectIndex];
+        if (origin == null) continue;
+        moves.add((keyframe, origin.$1 + deltaFrames, origin.$2 + deltaValue));
+      }
     }
     if (moves.isNotEmpty) widget.onTransformKeyframes!(moves);
   }
@@ -364,6 +387,7 @@ class _CurveEditorState extends State<CurveEditor> {
                   widget.onTransformKeyframes != null) {
                 setState(() {
                   _groupDragStart = details.localPosition;
+                  _groupScaling = HardwareKeyboard.instance.isAltPressed;
                   _groupOrigins = {
                     for (final keyframe in _numericKeyframes)
                       if (_selected.contains(keyframe.rawObjectIndex))
@@ -406,6 +430,7 @@ class _CurveEditorState extends State<CurveEditor> {
             _draggingHandleEnd = null;
             _groupDragStart = null;
             _groupOrigins = null;
+            _groupScaling = false;
           }),
           onPanCancel: () => setState(() {
             _marqueeStart = null;
@@ -415,6 +440,7 @@ class _CurveEditorState extends State<CurveEditor> {
             _draggingHandleEnd = null;
             _groupDragStart = null;
             _groupOrigins = null;
+            _groupScaling = false;
           }),
           child: CustomPaint(
             size: size,
