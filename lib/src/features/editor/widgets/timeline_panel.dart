@@ -80,6 +80,9 @@ class TimelinePanel extends StatelessWidget {
                               ? (keyframe, newFrame) =>
                                     state.retimeKeyframe(keyframe, newFrame)
                               : null,
+                          onDeleteKeyframe: state.canEdit
+                              ? state.deleteKeyframe
+                              : null,
                         ),
                 ),
               ],

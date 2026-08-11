@@ -64,5 +64,6 @@ final class EditorCommandCodec {
     register(SetComponentColorCommand.type, SetComponentColorCommand.fromJson);
     register(AddAnimationCommand.type, AddAnimationCommand.fromJson);
     register(InsertKeyframeCommand.type, InsertKeyframeCommand.fromJson);
+    register(DeleteKeyframeCommand.type, DeleteKeyframeCommand.fromJson);
   }
 }

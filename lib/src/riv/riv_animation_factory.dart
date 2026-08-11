@@ -160,6 +160,69 @@ abstract final class RivAnimationFactory {
     return true;
   }
 
+  /// Removes the keyframe at raw object index [rawObjectIndex], pruning
+  /// the owning KeyedProperty and KeyedObject when they become empty
+  /// (the runtime rejects keyed containers without children).
+  ///
+  /// Returns `true` when a keyframe was removed.
+  static bool deleteKeyframe(RivRawDocument document, int rawObjectIndex) {
+    if (rawObjectIndex < 0 || rawObjectIndex >= document.objects.length) {
+      return false;
+    }
+    final target = document.objects[rawObjectIndex];
+    if (!RivTypeKeys.keyFrameTypeKeys.contains(target.typeKey)) return false;
+
+    document.objects.removeAt(rawObjectIndex);
+
+    // Walk back to the owning KeyedProperty; prune if it now has no
+    // keyframes, then likewise for the owning KeyedObject.
+    var propertyIndex = -1;
+    for (var i = rawObjectIndex - 1; i >= 0; i--) {
+      final typeKey = document.objects[i].typeKey;
+      if (typeKey == RivTypeKeys.keyedProperty) {
+        propertyIndex = i;
+        break;
+      }
+      if (!RivTypeKeys.keyFrameTypeKeys.contains(typeKey) &&
+          !RivTypeKeys.interpolatorTypeKeys.contains(typeKey)) {
+        break;
+      }
+    }
+    if (propertyIndex < 0) return true;
+
+    final propertyHasKeyframes =
+        propertyIndex + 1 < document.objects.length &&
+        RivTypeKeys.keyFrameTypeKeys.contains(
+          document.objects[propertyIndex + 1].typeKey,
+        );
+    if (propertyHasKeyframes) return true;
+    document.objects.removeAt(propertyIndex);
+
+    var keyedObjectIndex = -1;
+    for (var i = propertyIndex - 1; i >= 0; i--) {
+      final typeKey = document.objects[i].typeKey;
+      if (typeKey == RivTypeKeys.keyedObject) {
+        keyedObjectIndex = i;
+        break;
+      }
+      if (typeKey != RivTypeKeys.keyedProperty &&
+          !RivTypeKeys.keyFrameTypeKeys.contains(typeKey) &&
+          !RivTypeKeys.interpolatorTypeKeys.contains(typeKey)) {
+        break;
+      }
+    }
+    if (keyedObjectIndex < 0) return true;
+
+    final objectHasProperties =
+        keyedObjectIndex + 1 < document.objects.length &&
+        document.objects[keyedObjectIndex + 1].typeKey ==
+            RivTypeKeys.keyedProperty;
+    if (!objectHasProperties) {
+      document.objects.removeAt(keyedObjectIndex);
+    }
+    return true;
+  }
+
   static RivRawObject _keyframe(int frame, double value) => RivRawObject(
     typeKey: RivTypeKeys.keyFrameDouble,
     properties: [

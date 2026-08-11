@@ -8,6 +8,7 @@ import 'package:rive_editor/src/core/commands/editor_command_codec.dart';
 import 'package:rive_editor/src/riv/riv_animation_factory.dart';
 import 'package:rive_editor/src/riv/riv_document_builder.dart';
 import 'package:rive_editor/src/riv/riv_document_editor.dart';
+import 'package:rive_editor/src/riv/riv_format.dart';
 import 'package:rive_editor/src/riv/riv_parser.dart';
 import 'package:rive_editor/src/riv/riv_raw_document.dart';
 import 'package:rive_editor/src/riv/riv_shape_factory.dart';
@@ -249,6 +250,98 @@ void main() {
               as InsertKeyframeCommand;
       expect(decodedInsert.animationOrdinal, 2);
       expect(decodedInsert.value, 6.5);
+    });
+  });
+  group('RivAnimationFactory.deleteKeyframe', () {
+    RivRawDocument keyedDocument({int keyframes = 2, int properties = 1}) {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      RivAnimationFactory.addAnimation(raw, artboardOrdinal: 0, name: 'A');
+      for (var p = 0; p < properties; p++) {
+        for (var k = 0; k < keyframes; k++) {
+          RivAnimationFactory.insertKeyframe(
+            raw,
+            artboardOrdinal: 0,
+            animationOrdinal: 0,
+            objectId: 1,
+            propertyKey: 13 + p,
+            frame: k * 10,
+            value: k.toDouble(),
+          );
+        }
+      }
+      return raw;
+    }
+
+    int keyframeIndexAt(RivRawDocument raw, int frame) {
+      for (var i = 0; i < raw.objects.length; i++) {
+        final object = raw.objects[i];
+        if (object.typeKey != RivTypeKeys.keyFrameDouble) continue;
+        final f = object.property(RivPropertyKeys.keyFrameFrame);
+        if ((f?.uintValue ?? 0) == frame) return i;
+      }
+      return -1;
+    }
+
+    test('removes one keyframe, keeping siblings', () {
+      final raw = keyedDocument();
+      expect(
+        RivAnimationFactory.deleteKeyframe(raw, keyframeIndexAt(raw, 10)),
+        isTrue,
+      );
+      final property = RivParser.parse(raw.serialize())
+          .artboards
+          .single
+          .animations
+          .single
+          .keyedObjects
+          .single
+          .properties
+          .single;
+      expect(property.keyframes.map((k) => k.frame), [0]);
+    });
+
+    test('prunes empty KeyedProperty and KeyedObject', () {
+      final raw = keyedDocument(keyframes: 1);
+      RivAnimationFactory.deleteKeyframe(raw, keyframeIndexAt(raw, 0));
+      final animation = RivParser.parse(
+        raw.serialize(),
+      ).artboards.single.animations.single;
+      expect(animation.keyedObjects, isEmpty);
+      expect(
+        raw.objects.any((o) => o.typeKey == RivTypeKeys.keyedObject),
+        isFalse,
+      );
+      expect(
+        raw.objects.any((o) => o.typeKey == RivTypeKeys.keyedProperty),
+        isFalse,
+      );
+    });
+
+    test('keeps the KeyedObject when another property remains', () {
+      final raw = keyedDocument(keyframes: 1, properties: 2);
+      RivAnimationFactory.deleteKeyframe(raw, keyframeIndexAt(raw, 0));
+      final keyed = RivParser.parse(
+        raw.serialize(),
+      ).artboards.single.animations.single.keyedObjects.single;
+      expect(keyed.properties, hasLength(1));
+      expect(keyed.properties.single.propertyKey, 14);
+    });
+
+    test('rejects non-keyframe indices', () {
+      final raw = keyedDocument();
+      expect(RivAnimationFactory.deleteKeyframe(raw, 0), isFalse);
+      expect(RivAnimationFactory.deleteKeyframe(raw, 999), isFalse);
+    });
+
+    test('DeleteKeyframeCommand executes with byte-identity undo', () {
+      final raw = keyedDocument();
+      final context = _TestContext(raw.serialize());
+      final before = context.editor.raw.serialize();
+      final index = keyframeIndexAt(context.editor.raw, 10);
+      final command = DeleteKeyframeCommand(rawObjectIndex: index);
+      expect(command.execute(context).succeeded, isTrue);
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.raw.serialize(), before);
     });
   });
 }
