@@ -160,6 +160,32 @@ abstract final class RivAnimationFactory {
     return true;
   }
 
+  /// Sets a uint property on animation [animationOrdinal] of artboard
+  /// [artboardOrdinal] (loop mode, fps, duration). Returns `true` when
+  /// the animation exists.
+  static bool setAnimationUint(
+    RivRawDocument document, {
+    required int artboardOrdinal,
+    required int animationOrdinal,
+    required int propertyKey,
+    required int value,
+  }) {
+    final span = _artboardSpan(document, artboardOrdinal);
+    if (span == null) return false;
+    final animation = _animationSpan(document, span, animationOrdinal);
+    if (animation == null) return false;
+
+    final object = document.objects[animation.start];
+    final property = object.property(propertyKey);
+    if (property != null) {
+      if (property.uintValue == value) return true;
+      property.uintValue = value;
+    } else {
+      object.properties.add(_uintProperty(propertyKey, value));
+    }
+    return true;
+  }
+
   /// Removes the keyframe at raw object index [rawObjectIndex], pruning
   /// the owning KeyedProperty and KeyedObject when they become empty
   /// (the runtime rejects keyed containers without children).

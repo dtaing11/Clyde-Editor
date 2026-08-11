@@ -184,3 +184,60 @@ final class DeleteKeyframeCommand extends SnapshotUndoCommand {
     'rawObjectIndex': rawObjectIndex,
   };
 }
+
+/// Sets a uint property (loop mode, fps, duration) on an animation.
+final class SetAnimationUintCommand extends SnapshotUndoCommand {
+  SetAnimationUintCommand({
+    required this.artboardOrdinal,
+    required this.animationOrdinal,
+    required this.propertyKey,
+    required this.value,
+    this.commandLabel = 'Edit animation',
+  });
+
+  factory SetAnimationUintCommand.fromJson(Map<String, dynamic> json) =>
+      SetAnimationUintCommand(
+        artboardOrdinal: json['artboardOrdinal'] as int,
+        animationOrdinal: json['animationOrdinal'] as int,
+        propertyKey: json['propertyKey'] as int,
+        value: json['value'] as int,
+      );
+
+  static const String type = 'setAnimationUint';
+
+  final int artboardOrdinal;
+  final int animationOrdinal;
+  final int propertyKey;
+  final int value;
+  final String commandLabel;
+
+  @override
+  String get label => commandLabel;
+
+  @override
+  CommandResult mutate(DocumentContext context) {
+    final ok = RivAnimationFactory.setAnimationUint(
+      context.editor!.raw,
+      artboardOrdinal: artboardOrdinal,
+      animationOrdinal: animationOrdinal,
+      propertyKey: propertyKey,
+      value: value,
+    );
+    return ok
+        ? const CommandResult.success()
+        : CommandResult.failed(
+            TargetNotFoundFailure(
+              'animation@$artboardOrdinal:$animationOrdinal',
+            ),
+          );
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'artboardOrdinal': artboardOrdinal,
+    'animationOrdinal': animationOrdinal,
+    'propertyKey': propertyKey,
+    'value': value,
+  };
+}

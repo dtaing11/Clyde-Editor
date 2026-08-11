@@ -131,6 +131,9 @@ class RivParser {
       name: _name(object, key: RivPropertyKeys.animationName),
       fps: _uint(object, RivPropertyKeys.animationFps) ?? 60,
       durationFrames: _uint(object, RivPropertyKeys.animationDuration) ?? 60,
+      loop: RivLoopMode.fromValue(
+        _uint(object, RivPropertyKeys.animationLoop) ?? 1,
+      ),
     );
   }
 

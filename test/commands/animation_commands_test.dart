@@ -9,6 +9,7 @@ import 'package:rive_editor/src/riv/riv_animation_factory.dart';
 import 'package:rive_editor/src/riv/riv_document_builder.dart';
 import 'package:rive_editor/src/riv/riv_document_editor.dart';
 import 'package:rive_editor/src/riv/riv_format.dart';
+import 'package:rive_editor/src/riv/riv_document_model.dart';
 import 'package:rive_editor/src/riv/riv_parser.dart';
 import 'package:rive_editor/src/riv/riv_raw_document.dart';
 import 'package:rive_editor/src/riv/riv_shape_factory.dart';
@@ -342,6 +343,77 @@ void main() {
       expect(command.execute(context).succeeded, isTrue);
       expect(command.undo(context).succeeded, isTrue);
       expect(context.editor.raw.serialize(), before);
+    });
+  });
+  group('loop modes', () {
+    test('new animations author loop and parser reads it back', () {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      RivAnimationFactory.addAnimation(raw, artboardOrdinal: 0, name: 'A');
+      final animation = RivParser.parse(
+        raw.serialize(),
+      ).artboards.single.animations.single;
+      expect(animation.loop, RivLoopMode.loop);
+    });
+
+    test('setAnimationUint changes the loop value', () {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      RivAnimationFactory.addAnimation(raw, artboardOrdinal: 0, name: 'A');
+      expect(
+        RivAnimationFactory.setAnimationUint(
+          raw,
+          artboardOrdinal: 0,
+          animationOrdinal: 0,
+          propertyKey: RivPropertyKeys.animationLoop,
+          value: RivLoopMode.pingPong.value,
+        ),
+        isTrue,
+      );
+      final animation = RivParser.parse(
+        raw.serialize(),
+      ).artboards.single.animations.single;
+      expect(animation.loop, RivLoopMode.pingPong);
+    });
+
+    test('setAnimationUint fails for a missing animation', () {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      expect(
+        RivAnimationFactory.setAnimationUint(
+          raw,
+          artboardOrdinal: 0,
+          animationOrdinal: 3,
+          propertyKey: RivPropertyKeys.animationLoop,
+          value: 0,
+        ),
+        isFalse,
+      );
+    });
+
+    test('SetAnimationUintCommand round-trips with byte-identity undo', () {
+      final raw = RivRawDocument.parse(_documentWithShape());
+      RivAnimationFactory.addAnimation(raw, artboardOrdinal: 0, name: 'A');
+      final context = _TestContext(raw.serialize());
+      final before = context.editor.raw.serialize();
+
+      final command = SetAnimationUintCommand(
+        artboardOrdinal: 0,
+        animationOrdinal: 0,
+        propertyKey: RivPropertyKeys.animationLoop,
+        value: RivLoopMode.oneShot.value,
+      );
+      expect(command.execute(context).succeeded, isTrue);
+      expect(
+        RivParser.fromRaw(
+          context.editor.raw,
+        ).artboards.single.animations.single.loop,
+        RivLoopMode.oneShot,
+      );
+      expect(command.undo(context).succeeded, isTrue);
+      expect(context.editor.raw.serialize(), before);
+
+      final decoded =
+          EditorCommandCodec.instance.decode(command.toJson())
+              as SetAnimationUintCommand;
+      expect(decoded.value, RivLoopMode.oneShot.value);
     });
   });
 }

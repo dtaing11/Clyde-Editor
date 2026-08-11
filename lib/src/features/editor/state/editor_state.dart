@@ -12,6 +12,7 @@ import '../../../riv/riv_artboard_editor.dart';
 import '../../../riv/riv_document_builder.dart';
 import '../../../riv/riv_document_editor.dart';
 import '../../../riv/riv_document_model.dart';
+import '../../../riv/riv_format.dart';
 import '../../../riv/riv_hierarchy.dart';
 import '../painting/timeline_animation_painter.dart';
 import '../services/autosave_service.dart';
@@ -442,6 +443,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
         previousAnimationIndex < _animations.length) {
       _selectedAnimationIndex = previousAnimationIndex;
       painter.setAnimation(selectedAnimation);
+      _syncPainterLoopMode();
     }
     seek(previousTime);
     if (wasPlaying) togglePlay();
@@ -497,6 +499,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     _currentTime = 0;
     painter.artboardChanged(artboard);
     painter.setAnimation(selectedAnimation);
+    _syncPainterLoopMode();
   }
 
   /// Selects the animation at [index] on the active artboard.
@@ -512,6 +515,31 @@ class EditorState extends ChangeNotifier implements DocumentContext {
       selectAnimation(_animations.length - 1);
     }
     return ok;
+  }
+
+  /// Loop mode of the selected animation (authored value).
+  RivLoopMode get loopMode => selectedAnimationModel?.loop ?? RivLoopMode.loop;
+
+  /// Persists a new loop mode for the selected animation and applies it
+  /// to live playback.
+  Future<bool> setLoopMode(RivLoopMode mode) async {
+    final ordinal = activeArtboardOrdinal;
+    if (ordinal < 0 || _selectedAnimationIndex < 0) return false;
+    final ok = await dispatch(
+      SetAnimationUintCommand(
+        artboardOrdinal: ordinal,
+        animationOrdinal: _selectedAnimationIndex,
+        propertyKey: RivPropertyKeys.animationLoop,
+        value: mode.value,
+        commandLabel: 'Set loop mode',
+      ),
+    );
+    if (ok) painter.loopMode = mode;
+    return ok;
+  }
+
+  void _syncPainterLoopMode() {
+    painter.loopMode = loopMode;
   }
 
   /// Deletes [keyframe] from the document (context-menu action).
@@ -550,6 +578,7 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     _isPlaying = false;
     _currentTime = 0;
     painter.setAnimation(selectedAnimation);
+    _syncPainterLoopMode();
     notifyListeners();
   }
 
