@@ -466,6 +466,9 @@ class _CurveEditorView extends StatelessWidget {
                   onSetKeyframeValue: state.canEdit
                       ? state.setKeyframeValue
                       : null,
+                  onSetCubicEase: state.canEdit
+                      ? state.setKeyframeCubicEase
+                      : null,
                 ),
         ),
       ],

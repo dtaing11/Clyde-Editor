@@ -18,6 +18,7 @@ class CurveEditor extends StatefulWidget {
     required this.animation,
     this.onRetimeKeyframe,
     this.onSetKeyframeValue,
+    this.onSetCubicEase,
   });
 
   final RivKeyedPropertyModel property;
@@ -31,15 +32,26 @@ class CurveEditor extends StatefulWidget {
   final void Function(RivKeyFrameModel keyframe, double newValue)?
   onSetKeyframeValue;
 
+  /// Invoked while a tangent handle of a cubic keyframe is dragged.
+  final void Function(RivKeyFrameModel keyframe, RivCubicEase ease)?
+  onSetCubicEase;
+
   @override
   State<CurveEditor> createState() => _CurveEditorState();
 }
+
+/// Which tangent handle of a cubic segment is being dragged.
+enum _HandleEnd { outgoing, incoming }
 
 class _CurveEditorState extends State<CurveEditor> {
   static const double _hitRadius = 10;
   static const double _verticalPadding = 14;
 
   RivKeyFrameModel? _dragging;
+
+  /// Cubic segment owner + which handle, when dragging a tangent.
+  RivKeyFrameModel? _draggingHandleOf;
+  _HandleEnd? _draggingHandleEnd;
 
   List<RivKeyFrameModel> get _numericKeyframes => [
     for (final keyframe in widget.property.keyframes)
@@ -75,6 +87,78 @@ class _CurveEditorState extends State<CurveEditor> {
         _verticalPadding -
         t * (size.height - 2 * _verticalPadding);
     return Offset(x, y);
+  }
+
+  /// The keyframe following [keyframe] in the numeric list, or `null`.
+  RivKeyFrameModel? _nextOf(RivKeyFrameModel keyframe) {
+    final keyframes = _numericKeyframes;
+    final index = keyframes.indexOf(keyframe);
+    return index >= 0 && index < keyframes.length - 1
+        ? keyframes[index + 1]
+        : null;
+  }
+
+  /// View positions of both tangent handles for the cubic segment
+  /// starting at [left], or `null` when the segment is not cubic.
+  ({Offset outgoing, Offset incoming})? _handlePositions(
+    RivKeyFrameModel left,
+    Size size,
+  ) {
+    final cubic = left.cubic;
+    final right = _nextOf(left);
+    if (cubic == null || right == null) return null;
+    final p0 = _pointFor(left, size);
+    final p1 = _pointFor(right, size);
+    return (
+      outgoing: Offset(
+        p0.dx + (p1.dx - p0.dx) * cubic.x1,
+        p0.dy + (p1.dy - p0.dy) * cubic.y1,
+      ),
+      incoming: Offset(
+        p0.dx + (p1.dx - p0.dx) * cubic.x2,
+        p0.dy + (p1.dy - p0.dy) * cubic.y2,
+      ),
+    );
+  }
+
+  /// Hit test tangent handles of cubic segments.
+  (RivKeyFrameModel, _HandleEnd)? _hitTestHandle(Offset local, Size size) {
+    for (final keyframe in _numericKeyframes) {
+      final handles = _handlePositions(keyframe, size);
+      if (handles == null) continue;
+      if ((handles.outgoing - local).distance < _hitRadius) {
+        return (keyframe, _HandleEnd.outgoing);
+      }
+      if ((handles.incoming - local).distance < _hitRadius) {
+        return (keyframe, _HandleEnd.incoming);
+      }
+    }
+    return null;
+  }
+
+  void _applyHandleDrag(Offset local, Size size) {
+    final owner = _draggingHandleOf;
+    final end = _draggingHandleEnd;
+    if (owner == null || end == null || widget.onSetCubicEase == null) return;
+    final cubic = owner.cubic;
+    final right = _nextOf(owner);
+    if (cubic == null || right == null) return;
+
+    final p0 = _pointFor(owner, size);
+    final p1 = _pointFor(right, size);
+    final dx = p1.dx - p0.dx;
+    final dy = p1.dy - p0.dy;
+    if (dx.abs() < 1e-6) return;
+
+    // Normalise the pointer into segment space. x stays in [0,1] (the
+    // runtime requires ease x in range); y may overshoot for bounce.
+    final nx = ((local.dx - p0.dx) / dx).clamp(0.0, 1.0);
+    final ny = dy.abs() < 1e-6 ? 0.0 : (local.dy - p0.dy) / dy;
+
+    final ease = end == _HandleEnd.outgoing
+        ? RivCubicEase(x1: nx, y1: ny, x2: cubic.x2, y2: cubic.y2)
+        : RivCubicEase(x1: cubic.x1, y1: cubic.y1, x2: nx, y2: ny);
+    widget.onSetCubicEase!(owner, ease);
   }
 
   RivKeyFrameModel? _hitTest(Offset local, Size size) {
@@ -133,13 +217,20 @@ class _CurveEditorState extends State<CurveEditor> {
   @override
   void didUpdateWidget(CurveEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Document edits rebuild the model; re-resolve the dragged keyframe
-    // by raw index so the drag survives across rebuilds.
+    // Document edits rebuild the model; re-resolve dragged objects by
+    // raw index so drags survive across rebuilds.
     final dragging = _dragging;
-    if (dragging == null) return;
-    _dragging = _numericKeyframes
-        .where((k) => k.rawObjectIndex == dragging.rawObjectIndex)
-        .firstOrNull;
+    if (dragging != null) {
+      _dragging = _numericKeyframes
+          .where((k) => k.rawObjectIndex == dragging.rawObjectIndex)
+          .firstOrNull;
+    }
+    final handleOwner = _draggingHandleOf;
+    if (handleOwner != null) {
+      _draggingHandleOf = _numericKeyframes
+          .where((k) => k.rawObjectIndex == handleOwner.rawObjectIndex)
+          .firstOrNull;
+    }
   }
 
   @override
@@ -158,12 +249,36 @@ class _CurveEditorState extends State<CurveEditor> {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onPanStart: (details) {
+            final handle = widget.onSetCubicEase == null
+                ? null
+                : _hitTestHandle(details.localPosition, size);
+            if (handle != null) {
+              setState(() {
+                _draggingHandleOf = handle.$1;
+                _draggingHandleEnd = handle.$2;
+              });
+              return;
+            }
             final hit = _hitTest(details.localPosition, size);
             if (hit != null) setState(() => _dragging = hit);
           },
-          onPanUpdate: (details) => _applyDrag(details.localPosition, size),
-          onPanEnd: (_) => setState(() => _dragging = null),
-          onPanCancel: () => setState(() => _dragging = null),
+          onPanUpdate: (details) {
+            if (_draggingHandleOf != null) {
+              _applyHandleDrag(details.localPosition, size);
+            } else {
+              _applyDrag(details.localPosition, size);
+            }
+          },
+          onPanEnd: (_) => setState(() {
+            _dragging = null;
+            _draggingHandleOf = null;
+            _draggingHandleEnd = null;
+          }),
+          onPanCancel: () => setState(() {
+            _dragging = null;
+            _draggingHandleOf = null;
+            _draggingHandleEnd = null;
+          }),
           child: CustomPaint(
             size: size,
             painter: _CurvePainter(
@@ -172,6 +287,7 @@ class _CurveEditorState extends State<CurveEditor> {
               valueRange: _valueRange,
               verticalPadding: _verticalPadding,
               dragging: _dragging,
+              showHandles: widget.onSetCubicEase != null,
             ),
           ),
         );
@@ -188,6 +304,7 @@ class _CurvePainter extends CustomPainter {
     required this.valueRange,
     required this.verticalPadding,
     required this.dragging,
+    required this.showHandles,
   });
 
   final RivKeyedPropertyModel property;
@@ -195,6 +312,7 @@ class _CurvePainter extends CustomPainter {
   final (double, double) valueRange;
   final double verticalPadding;
   final RivKeyFrameModel? dragging;
+  final bool showHandles;
 
   double _yFor(double value, Size size) {
     final (min, max) = valueRange;
@@ -262,6 +380,50 @@ class _CurvePainter extends CustomPainter {
           ..strokeWidth = 1.5
           ..color = EditorTheme.accent,
       );
+    }
+
+    // Tangent handles for cubic segments: stems + squares at the
+    // bezier control points, in segment space.
+    if (showHandles && duration > 0) {
+      final numeric = [
+        for (final k in property.keyframes)
+          if (k.value != null) k,
+      ];
+      final stem = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = EditorTheme.textSecondary;
+      final handleFill = Paint()..color = const Color(0xFFFFB74D);
+      for (var i = 0; i < numeric.length - 1; i++) {
+        final left = numeric[i];
+        final right = numeric[i + 1];
+        final cubic = left.cubic;
+        if (cubic == null) continue;
+        final p0 = Offset(
+          (left.frame / duration) * size.width,
+          _yFor(left.value!, size),
+        );
+        final p1 = Offset(
+          (right.frame / duration) * size.width,
+          _yFor(right.value!, size),
+        );
+        final outgoing = Offset(
+          p0.dx + (p1.dx - p0.dx) * cubic.x1,
+          p0.dy + (p1.dy - p0.dy) * cubic.y1,
+        );
+        final incoming = Offset(
+          p0.dx + (p1.dx - p0.dx) * cubic.x2,
+          p0.dy + (p1.dy - p0.dy) * cubic.y2,
+        );
+        canvas.drawLine(p0, outgoing, stem);
+        canvas.drawLine(p1, incoming, stem);
+        for (final handle in [outgoing, incoming]) {
+          canvas.drawRect(
+            Rect.fromCenter(center: handle, width: 7, height: 7),
+            handleFill,
+          );
+        }
+      }
     }
 
     // Control points.
