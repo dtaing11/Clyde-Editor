@@ -547,10 +547,32 @@ class EditorState extends ChangeNotifier implements DocumentContext {
     return null;
   }
 
+  /// All animated properties of the curve track's keyed object; the
+  /// curve editor overlays these as sibling channels.
+  List<RivKeyedPropertyModel> get curveSiblingProperties {
+    final track = _curveTrack;
+    final animation = selectedAnimationModel;
+    if (track == null || animation == null) return const [];
+    for (final keyedObject in animation.keyedObjects) {
+      if (keyedObject.objectId == track.objectId) {
+        return keyedObject.properties;
+      }
+    }
+    return const [];
+  }
+
   /// Shows the curve editor for one property track.
   void showCurvesFor({required int objectId, required int propertyKey}) {
     _curveTrack = (objectId: objectId, propertyKey: propertyKey);
     _showCurveEditor = true;
+    notifyListeners();
+  }
+
+  /// Switches the curve editor to a sibling channel of the same object.
+  void selectCurveChannel(int propertyKey) {
+    final track = _curveTrack;
+    if (track == null || track.propertyKey == propertyKey) return;
+    _curveTrack = (objectId: track.objectId, propertyKey: propertyKey);
     notifyListeners();
   }
 

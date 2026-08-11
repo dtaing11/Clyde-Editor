@@ -16,6 +16,7 @@ class CurveEditor extends StatefulWidget {
     super.key,
     required this.property,
     required this.animation,
+    this.siblingProperties = const [],
     this.onRetimeKeyframe,
     this.onSetKeyframeValue,
     this.onSetCubicEase,
@@ -23,6 +24,24 @@ class CurveEditor extends StatefulWidget {
 
   final RivKeyedPropertyModel property;
   final RivAnimationModel animation;
+
+  /// Other animated channels of the same object, overlaid read-only in
+  /// per-channel colours behind the active curve (§2.8 multi-channel).
+  final List<RivKeyedPropertyModel> siblingProperties;
+
+  /// Per-channel colours, cycled by property-key hash so a channel
+  /// keeps its colour across sessions.
+  static const List<Color> channelColors = [
+    Color(0xFFE57373), // red (X)
+    Color(0xFF81C784), // green (Y)
+    Color(0xFFBA68C8), // purple (rotation)
+    Color(0xFF4DD0E1), // cyan (scale)
+    Color(0xFFFFD54F), // amber (opacity)
+  ];
+
+  /// Stable colour for a channel by its Rive property key.
+  static Color colorFor(int propertyKey) =>
+      channelColors[propertyKey % channelColors.length];
 
   /// Invoked when a control point is dragged to a new frame.
   final void Function(RivKeyFrameModel keyframe, int newFrame)?
@@ -59,15 +78,25 @@ class _CurveEditorState extends State<CurveEditor> {
   ];
 
   /// Value range shown, padded so flat curves are not on the edge.
+  /// Includes overlaid sibling channels so every curve fits the view.
   (double min, double max) get _valueRange {
     final keyframes = _numericKeyframes;
     if (keyframes.isEmpty) return (0, 1);
     var min = keyframes.first.value!;
     var max = min;
-    for (final keyframe in keyframes) {
-      final value = keyframe.value!;
-      if (value < min) min = value;
-      if (value > max) max = value;
+    void include(Iterable<RivKeyFrameModel> list) {
+      for (final keyframe in list) {
+        final value = keyframe.value;
+        if (value == null) continue;
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+    }
+
+    include(keyframes);
+    for (final sibling in widget.siblingProperties) {
+      if (identical(sibling, widget.property)) continue;
+      include(sibling.keyframes);
     }
     if (min == max) {
       min -= 1;
@@ -284,6 +313,7 @@ class _CurveEditorState extends State<CurveEditor> {
             painter: _CurvePainter(
               property: widget.property,
               animation: widget.animation,
+              siblingProperties: widget.siblingProperties,
               valueRange: _valueRange,
               verticalPadding: _verticalPadding,
               dragging: _dragging,
@@ -301,6 +331,7 @@ class _CurvePainter extends CustomPainter {
   _CurvePainter({
     required this.property,
     required this.animation,
+    required this.siblingProperties,
     required this.valueRange,
     required this.verticalPadding,
     required this.dragging,
@@ -309,6 +340,7 @@ class _CurvePainter extends CustomPainter {
 
   final RivKeyedPropertyModel property;
   final RivAnimationModel animation;
+  final List<RivKeyedPropertyModel> siblingProperties;
   final (double, double) valueRange;
   final double verticalPadding;
   final RivKeyFrameModel? dragging;
@@ -351,34 +383,31 @@ class _CurvePainter extends CustomPainter {
       painter.paint(canvas, Offset(4, y - painter.height - 2));
     }
 
-    // Evaluated curve: one sample per horizontal pixel through the
+    // Evaluated curves: one sample per horizontal pixel through the
     // shared evaluator (same code path as inspector values, §2.8).
+    // Sibling channels draw dimmed behind the active curve, each in
+    // its per-channel colour.
     final duration = animation.durationFrames;
     if (duration > 0) {
-      final path = Path();
-      var started = false;
-      for (var x = 0.0; x <= size.width; x += 1) {
-        final seconds = (x / size.width) * duration / animation.fps;
-        final value = RivKeyframeEvaluator.evaluate(
-          property,
-          seconds,
-          animation.fps,
-        );
-        if (value == null) continue;
-        final y = _yFor(value, size);
-        if (!started) {
-          path.moveTo(x, y);
-          started = true;
-        } else {
-          path.lineTo(x, y);
+      for (final sibling in siblingProperties) {
+        if (identical(sibling, property) ||
+            sibling.propertyKey == property.propertyKey) {
+          continue;
         }
+        _paintCurve(
+          canvas,
+          size,
+          sibling,
+          CurveEditor.colorFor(sibling.propertyKey).withValues(alpha: 0.45),
+          1,
+        );
       }
-      canvas.drawPath(
-        path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
-          ..color = EditorTheme.accent,
+      _paintCurve(
+        canvas,
+        size,
+        property,
+        CurveEditor.colorFor(property.propertyKey),
+        1.8,
       );
     }
 
@@ -441,7 +470,10 @@ class _CurvePainter extends CustomPainter {
       canvas.drawCircle(
         centre,
         isDragging ? 6 : 4.5,
-        Paint()..color = isDragging ? Colors.white : EditorTheme.accent,
+        Paint()
+          ..color = isDragging
+              ? Colors.white
+              : CurveEditor.colorFor(property.propertyKey),
       );
       canvas.drawCircle(
         centre,
@@ -452,6 +484,41 @@ class _CurvePainter extends CustomPainter {
           ..color = EditorTheme.background,
       );
     }
+  }
+
+  void _paintCurve(
+    Canvas canvas,
+    Size size,
+    RivKeyedPropertyModel track,
+    Color color,
+    double strokeWidth,
+  ) {
+    final path = Path();
+    var started = false;
+    for (var x = 0.0; x <= size.width; x += 1) {
+      final seconds =
+          (x / size.width) * animation.durationFrames / animation.fps;
+      final value = RivKeyframeEvaluator.evaluate(
+        track,
+        seconds,
+        animation.fps,
+      );
+      if (value == null) continue;
+      final y = _yFor(value, size);
+      if (!started) {
+        path.moveTo(x, y);
+        started = true;
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..color = color,
+    );
   }
 
   @override

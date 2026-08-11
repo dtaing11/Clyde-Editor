@@ -412,6 +412,7 @@ class _CurveEditorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final property = state.curveProperty;
+    final siblings = state.curveSiblingProperties;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -441,6 +442,18 @@ class _CurveEditorView extends StatelessWidget {
                   color: EditorTheme.textPrimary,
                 ),
               ),
+              const SizedBox(width: 12),
+              // Channel legend: click a chip to switch the active
+              // channel; the others stay overlaid, dimmed.
+              for (final channel in siblings)
+                _ChannelChip(
+                  label: channel.displayName,
+                  color: CurveEditor.colorFor(channel.propertyKey),
+                  active:
+                      property != null &&
+                      channel.propertyKey == property.propertyKey,
+                  onTap: () => state.selectCurveChannel(channel.propertyKey),
+                ),
             ],
           ),
         ),
@@ -459,6 +472,7 @@ class _CurveEditorView extends StatelessWidget {
               : CurveEditor(
                   property: property,
                   animation: model,
+                  siblingProperties: siblings,
                   onRetimeKeyframe: state.canEdit
                       ? (keyframe, newFrame) =>
                             state.retimeKeyframe(keyframe, newFrame)
@@ -472,6 +486,57 @@ class _CurveEditorView extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// Colour-dotted channel chip in the curve editor header.
+class _ChannelChip extends StatelessWidget {
+  const _ChannelChip({
+    required this.label,
+    required this.color,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(right: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: active ? EditorTheme.surfaceAlt : null,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: active ? color : EditorTheme.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: active
+                    ? EditorTheme.textPrimary
+                    : EditorTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
