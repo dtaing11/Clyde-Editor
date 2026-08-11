@@ -36,7 +36,17 @@ class EditorDocument {
   RivDocumentModel? get model => editor?.model;
 
   /// Decodes [bytes] into a document, or returns `null` on failure.
-  static Future<EditorDocument?> decode(String name, Uint8List bytes) async {
+  ///
+  /// [reuseEditor] keeps an existing byte-level editor as the document's
+  /// source of truth instead of re-parsing [bytes]. Engine reloads MUST
+  /// pass it: commands mutate the live editor, and re-parsing here would
+  /// discard any mutation dispatched while the async decode was in
+  /// flight (lost keyframes/moves).
+  static Future<EditorDocument?> decode(
+    String name,
+    Uint8List bytes, {
+    RivDocumentEditor? reuseEditor,
+  }) async {
     final file = await RiveEngine.decodeFile(bytes);
     if (file == null) return null;
 
@@ -54,12 +64,14 @@ class EditorDocument {
       return null;
     }
 
-    RivDocumentEditor? editor;
-    try {
-      editor = RivDocumentEditor.parse(bytes);
-    } on Exception {
-      // Non-fatal: timeline tracks and editing are simply unavailable.
-      editor = null;
+    RivDocumentEditor? editor = reuseEditor;
+    if (editor == null) {
+      try {
+        editor = RivDocumentEditor.parse(bytes);
+      } on Exception {
+        // Non-fatal: timeline tracks and editing are simply unavailable.
+        editor = null;
+      }
     }
     return EditorDocument._(
       name: name,
