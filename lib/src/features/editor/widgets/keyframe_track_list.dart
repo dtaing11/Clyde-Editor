@@ -22,6 +22,7 @@ class KeyframeTrackList extends StatelessWidget {
     this.onCopyKeyframe,
     this.onPasteKeyframe,
     this.canPaste = false,
+    this.onShowCurves,
   });
 
   final RivAnimationModel animation;
@@ -55,6 +56,13 @@ class KeyframeTrackList extends StatelessWidget {
 
   /// Whether the keyframe clipboard has content (enables Paste).
   final bool canPaste;
+
+  /// Invoked when the user opens a property track in the curve editor.
+  final void Function(
+    RivKeyedObjectModel keyedObject,
+    RivKeyedPropertyModel property,
+  )?
+  onShowCurves;
 
   /// Width reserved on the left for track names, so keyframe positions
   /// align with the shared time ruler above.
@@ -90,6 +98,9 @@ class KeyframeTrackList extends StatelessWidget {
                   : (keyframe) =>
                         onCopyKeyframe!(keyedObject, property, keyframe),
               onPasteKeyframe: canPaste ? onPasteKeyframe : null,
+              onShowCurves: onShowCurves == null
+                  ? null
+                  : () => onShowCurves!(keyedObject, property),
             ),
         ],
       ],
@@ -150,6 +161,7 @@ class _PropertyTrackRow extends StatelessWidget {
     required this.onDeleteKeyframe,
     required this.onCopyKeyframe,
     required this.onPasteKeyframe,
+    required this.onShowCurves,
   });
 
   final RivKeyedPropertyModel property;
@@ -160,6 +172,7 @@ class _PropertyTrackRow extends StatelessWidget {
   final ValueChanged<RivKeyFrameModel>? onDeleteKeyframe;
   final ValueChanged<RivKeyFrameModel>? onCopyKeyframe;
   final VoidCallback? onPasteKeyframe;
+  final VoidCallback? onShowCurves;
 
   @override
   Widget build(BuildContext context) {
@@ -169,16 +182,35 @@ class _PropertyTrackRow extends StatelessWidget {
         children: [
           SizedBox(
             width: labelWidth,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 24),
-              child: Text(
-                property.displayName,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: EditorTheme.textSecondary,
+            child: Row(
+              children: [
+                const SizedBox(width: 24),
+                Expanded(
+                  child: Text(
+                    property.displayName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: EditorTheme.textSecondary,
+                    ),
+                  ),
                 ),
-              ),
+                if (onShowCurves != null)
+                  Tooltip(
+                    message: 'Edit curve',
+                    child: InkWell(
+                      onTap: onShowCurves,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(
+                          Icons.show_chart,
+                          size: 11,
+                          color: EditorTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           Expanded(
