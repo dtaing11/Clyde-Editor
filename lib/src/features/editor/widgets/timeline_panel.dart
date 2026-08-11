@@ -105,6 +105,9 @@ class TimelinePanel extends StatelessWidget {
                                 objectId: keyedObject.objectId,
                                 propertyKey: property.propertyKey,
                               ),
+                          onSetInterpolation: state.canEdit
+                              ? state.setKeyframeInterpolation
+                              : null,
                         ),
                 ),
               ],
